@@ -217,8 +217,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Monte Carlo — data and output files in root directory
-# (committed versions live under exemples/)
-/*.csv
-/*.txt
-/*.png
+# Monte Carlo — data and output files
+# (committed sample files live under exemples/)
+data/*.csv
+data/*.txt
+output/*.png

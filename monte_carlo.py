@@ -30,9 +30,10 @@ matplotlib.use("Agg")
 SCORES = {"Petit": 1, "Moyen": 3, "Grand": 5, "Très grand": 8}
 
 N_SIMULATIONS = 10_000
-DEFAULT_FILE = "kanban_zone.csv"
-DEFAULT_THROUGHPUT_TXT = "Throughput.txt"
-DEFAULT_ANNOTATIONS_FILE = "annotations.csv"
+DEFAULT_FILE             = "data/kanban_zone.csv"
+DEFAULT_THROUGHPUT_TXT   = "data/Throughput.txt"
+DEFAULT_ANNOTATIONS_FILE = "data/annotations.csv"
+DEFAULT_OUTPUT_DIR       = "output"
 DATE_FORMATS = ["%m-%d-%Y %H:%M", "%Y/%m/%d", "%Y-%m-%d"]
 
 
@@ -434,6 +435,7 @@ def make_charts(
     annot_file: str | None = None,
     n_simulations: int = 10_000,
     lang: str = "en",
+    output_dir: str = DEFAULT_OUTPUT_DIR,
 ) -> None:
     if certainties is None:
         certainties = [80]
@@ -725,7 +727,9 @@ def make_charts(
                  transform=ax3.transAxes, color=C_SUBTEXT)
 
     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out = Path(f"monte_carlo_{ts}.png").resolve()
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    out = (out_path / f"monte_carlo_{ts}.png").resolve()
     plt.savefig(out, dpi=150, bbox_inches="tight", facecolor=BG)
     plt.close()
     print(f"✅ Chart saved: {out}")
@@ -770,6 +774,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Certainty levels to display, e.g. --certainties 80 90 95 (default: 80)")
     p.add_argument("-a", "--annotations", default=None,
                    help=f"CSV annotations file (default: {DEFAULT_ANNOTATIONS_FILE} if present)")
+    p.add_argument("-o", "--output-dir", default=DEFAULT_OUTPUT_DIR,
+                   help=f"Directory for generated charts (default: {DEFAULT_OUTPUT_DIR})")
     p.add_argument("--lang", choices=list(CHART_STRINGS.keys()), default="en",
                    help="Language for the generated chart (default: en)")
     p.add_argument("--formats", action="store_true",
@@ -893,6 +899,7 @@ def main() -> None:
         annot_file=args.annotations,
         n_simulations=args.simulations,
         lang=args.lang,
+        output_dir=args.output_dir,
     )
 
 

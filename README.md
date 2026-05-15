@@ -23,19 +23,19 @@ pip install -r requirements.txt
 
 ```bash
 # From a Kanban Zone export: deliver 2 Large + 3 Medium in 10 weeks
-python monte_carlo.py -f Développements-informatiques.csv -s 10 -g 2 -m 3
+python monte_carlo.py -l 2 -m 3 -w 10
 
 # Same, history window limited to the last 12 weeks
-python monte_carlo.py -f Développements-informatiques.csv -s 10 -g 2 -m 3 -w 12
+python monte_carlo.py -l 2 -m 3 -w 10 -W 12
 
-# French chart labels, 5 holiday days, certainties at 80% and 90%
-python monte_carlo.py -f Throughput.txt -s 15 -n 42 -c 5 -d 80 90 --lang fr
+# 42 direct points, 15 weeks, 5 days off, certainties at 80% and 90%, French chart
+python monte_carlo.py -p 42 -w 15 -d 5 -c 80 90 --lang fr
 
 # List supported formats
 python monte_carlo.py --formats
 ```
 
-The chart is saved in the current directory as `monte_carlo_YYYYMMDD_HHMMSS.png`.
+The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.png` (override with `-o/--output-dir`).
 
 ---
 
@@ -56,6 +56,7 @@ The chart is saved in the current directory as `monte_carlo_YYYYMMDD_HHMMSS.png`
 | `-i` | `--simulations`   | `10000`      | Number of Monte Carlo simulations |
 | `-d` | `--certainties`   | `80`         | Certainty levels to display (e.g. `-d 80 90 95`) |
 | `-a` | `--annotations`   | auto-detect  | CSV annotations file (see below) |
+| `-o` | `--output-dir`    | `output`     | Directory for generated charts |
 |      | `--lang`          | `en`         | Chart language: `en` or `fr` |
 |      | `--formats`       |              | List supported formats and exit |
 
@@ -86,7 +87,7 @@ All other export columns are ignored. Detection is automatic: if both required c
 **Example file:** `exemples/kanban_zone.csv`
 
 ```bash
-python monte_carlo.py -f exemples/kanban_zone.csv -s 12 -g 3 -m 4
+python monte_carlo.py -f exemples/kanban_zone.csv -w 12 -l 3 -m 4
 ```
 
 ---
@@ -104,7 +105,7 @@ Synthetic dates are assigned automatically, anchoring the last value to the Mond
 **Example file:** `exemples/throughput.txt`
 
 ```bash
-python monte_carlo.py -f exemples/throughput.txt -s 10 -n 30
+python monte_carlo.py -f exemples/throughput.txt -w 10 -p 30
 ```
 
 ---
@@ -126,10 +127,10 @@ Accepted date formats: `YYYY-MM-DD`, `YYYY/MM/DD`, or `MM-DD-YYYY HH:MM`.
 
 **Example file:** `exemples/annotations.csv`
 
-By default, the script automatically loads `annotations.csv` if it is present in the working directory. To specify a different file:
+By default, the script automatically loads `data/annotations.csv` if present. To specify a different file:
 
 ```bash
-python monte_carlo.py -f my_export.csv -s 12 -g 2 -a my_annotations.csv
+python monte_carlo.py -f my_export.csv -w 12 -l 2 -a my_annotations.csv
 ```
 
 ---
@@ -207,9 +208,14 @@ The position in `LOADERS` determines priority in case of ambiguity. Header-based
 monte_carlo.py          Main script
 requirements.txt        Python dependencies
 README.md               This documentation
-annotations.csv         Local annotations (optional, auto-loaded)
-exemples/
-    kanban_zone.csv     Sample data — Kanban Zone format
-    throughput.txt      Sample data — plain-text format
-    annotations.csv     Sample annotations
+.gitignore
+data/                   Input data (gitignored — place your files here)
+    kanban_zone.csv
+    annotations.csv
+    Throughput.txt
+output/                 Generated charts (gitignored)
+exemples/               Committed sample files
+    kanban_zone.csv
+    throughput.txt
+    annotations.csv
 ```
