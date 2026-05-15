@@ -1,71 +1,52 @@
 Card ID,Card Title,Board,List,Created At,Done At,CF Envergure,Labels,Members
-KZ-001,Refonte page d'accueil,Développements informatiques,Terminé,10-01-2025 09:00,11-03-2025 14:22,Grand,Frontend,Julie Tremblay
-KZ-002,Correction bug pagination,Développements informatiques,Terminé,10-05-2025 10:15,11-04-2025 11:05,Petit,Backend,Marc Gagnon
-KZ-003,Intégration API paiement,Développements informatiques,Terminé,10-08-2025 08:30,11-07-2025 16:48,Très grand,Backend,Julie Tremblay
-KZ-004,Mise à jour dépendances npm,Développements informatiques,Terminé,10-10-2025 13:00,11-10-2025 09:30,Petit,DevOps,Marc Gagnon
-KZ-005,Formulaire d'inscription,Développements informatiques,Terminé,10-12-2025 09:45,11-12-2025 15:20,Moyen,Frontend,Sara Bouchard
-KZ-006,Export PDF rapports,Développements informatiques,Terminé,10-15-2025 11:00,11-14-2025 10:10,Grand,Backend,Julie Tremblay
-KZ-007,Notifications courriel,Développements informatiques,Terminé,10-18-2025 14:30,11-17-2025 14:55,Moyen,Backend,Marc Gagnon
-KZ-008,Migration base de données v2,Développements informatiques,Terminé,10-20-2025 09:00,11-18-2025 11:30,Grand,DevOps,Sara Bouchard
-KZ-009,Optimisation requêtes SQL,Développements informatiques,Terminé,10-22-2025 10:00,11-21-2025 09:45,Moyen,Backend,Julie Tremblay
-KZ-010,Interface mobile responsive,Développements informatiques,Terminé,10-25-2025 13:15,11-24-2025 16:00,Grand,Frontend,Marc Gagnon
-KZ-011,Gestion des rôles utilisateurs,Développements informatiques,Terminé,10-28-2025 09:30,11-25-2025 10:20,Très grand,Backend,Sara Bouchard
-KZ-012,Correctif fuseau horaire,Développements informatiques,Terminé,11-01-2025 11:00,12-01-2025 14:35,Petit,Backend,Julie Tremblay
-KZ-013,Tableau de bord analytique,Développements informatiques,Terminé,11-03-2025 09:00,12-03-2025 09:50,Très grand,Frontend,Marc Gagnon
-KZ-014,Authentification SSO,Développements informatiques,Terminé,11-05-2025 10:30,12-05-2025 11:15,Grand,Sécurité,Sara Bouchard
-KZ-015,Amélioration moteur de recherche,Développements informatiques,Terminé,11-08-2025 14:00,12-08-2025 15:40,Grand,Backend,Julie Tremblay
-KZ-016,Correction bug upload fichiers,Développements informatiques,Terminé,11-10-2025 09:15,12-09-2025 10:05,Petit,Backend,Marc Gagnon
-KZ-017,Page de profil utilisateur,Développements informatiques,Terminé,11-12-2025 13:45,12-11-2025 14:20,Moyen,Frontend,Sara Bouchard
-KZ-018,Logs d'audit,Développements informatiques,Terminé,11-15-2025 10:00,12-15-2025 09:30,Moyen,Sécurité,Julie Tremblay
-KZ-019,Intégration webhooks,Développements informatiques,Terminé,11-18-2025 11:30,12-16-2025 16:10,Grand,Backend,Marc Gagnon
-KZ-020,Tests unitaires module facturation,Développements informatiques,Terminé,11-20-2025 09:00,12-18-2025 11:55,Moyen,QA,Sara Bouchard
-KZ-021,Refactoring module auth,Développements informatiques,Terminé,11-22-2025 14:00,12-19-2025 10:30,Grand,Backend,Julie Tremblay
-KZ-022,Gestion des devises,Développements informatiques,Terminé,11-25-2025 10:15,12-22-2025 14:45,Très grand,Backend,Marc Gagnon
-KZ-023,Correction affichage IE,Développements informatiques,Terminé,12-01-2025 09:30,01-05-2026 09:10,Petit,Frontend,Sara Bouchard
-KZ-024,Pipeline CI/CD automatisé,Développements informatiques,Terminé,12-03-2025 11:00,01-07-2026 15:30,Grand,DevOps,Julie Tremblay
-KZ-025,Système de cache Redis,Développements informatiques,Terminé,12-05-2025 14:30,01-08-2026 11:20,Grand,Backend,Marc Gagnon
-KZ-026,Rapport hebdomadaire automatique,Développements informatiques,Terminé,12-08-2025 09:00,01-09-2026 14:00,Moyen,Backend,Sara Bouchard
-KZ-027,API REST v2 documentation,Développements informatiques,Terminé,12-10-2025 10:45,01-12-2026 10:50,Moyen,Documentation,Julie Tremblay
-KZ-028,Module de facturation récurrente,Développements informatiques,Terminé,12-12-2025 13:00,01-13-2026 15:15,Très grand,Backend,Marc Gagnon
-KZ-029,Nettoyage données orphelines,Développements informatiques,Terminé,12-15-2025 09:15,01-14-2026 09:40,Petit,DevOps,Sara Bouchard
-KZ-030,Internationalisation (i18n),Développements informatiques,Terminé,12-17-2025 11:30,01-15-2026 11:00,Grand,Frontend,Julie Tremblay
-KZ-031,Optimisation images CDN,Développements informatiques,Terminé,01-05-2026 10:00,01-19-2026 14:30,Moyen,Frontend,Marc Gagnon
-KZ-032,Alertes seuils performance,Développements informatiques,Terminé,01-07-2026 09:30,01-21-2026 10:15,Moyen,Backend,Sara Bouchard
-KZ-033,Module gestion des contrats,Développements informatiques,Terminé,01-09-2026 14:00,01-22-2026 15:55,Très grand,Backend,Julie Tremblay
-KZ-034,Correction bug tri colonnes,Développements informatiques,Terminé,01-12-2026 10:15,01-26-2026 09:25,Petit,Frontend,Marc Gagnon
-KZ-035,Synchronisation agenda externe,Développements informatiques,Terminé,01-14-2026 11:30,01-28-2026 14:40,Grand,Intégrations,Sara Bouchard
-KZ-036,Tests de charge k6,Développements informatiques,Terminé,01-16-2026 09:00,01-29-2026 11:05,Moyen,QA,Julie Tremblay
-KZ-037,Tableau de bord administrateur,Développements informatiques,Terminé,01-19-2026 13:45,02-02-2026 10:30,Grand,Frontend,Marc Gagnon
-KZ-038,Gestion des permissions granulaires,Développements informatiques,Terminé,01-21-2026 10:00,02-04-2026 15:20,Très grand,Sécurité,Sara Bouchard
-KZ-039,Import CSV utilisateurs en lot,Développements informatiques,Terminé,01-23-2026 09:15,02-05-2026 09:50,Moyen,Backend,Julie Tremblay
-KZ-040,Correctif calcul taxes,Développements informatiques,Terminé,01-26-2026 11:00,02-06-2026 14:10,Petit,Backend,Marc Gagnon
-KZ-041,Signature électronique documents,Développements informatiques,Terminé,01-28-2026 14:30,02-09-2026 11:35,Grand,Backend,Sara Bouchard
-KZ-042,Rapport mensuel automatisé,Développements informatiques,Terminé,02-02-2026 09:00,02-11-2026 10:00,Moyen,Backend,Julie Tremblay
-KZ-043,Amélioration UX formulaires,Développements informatiques,Terminé,02-04-2026 10:30,02-12-2026 15:45,Moyen,Frontend,Marc Gagnon
-KZ-044,Archivage automatique anciens dossiers,Développements informatiques,Terminé,02-06-2026 13:00,02-16-2026 09:20,Grand,Backend,Sara Bouchard
-KZ-045,Correctif connexion LDAP,Développements informatiques,Terminé,02-09-2026 09:45,02-17-2026 14:00,Petit,Sécurité,Julie Tremblay
-KZ-046,Module de sondages intégrés,Développements informatiques,Terminé,02-11-2026 11:00,02-18-2026 11:30,Grand,Frontend,Marc Gagnon
-KZ-047,Journalisation centralisée (ELK),Développements informatiques,Terminé,02-13-2026 14:15,02-19-2026 10:10,Grand,DevOps,Sara Bouchard
-KZ-048,Validation des données entrantes,Développements informatiques,Terminé,02-16-2026 09:30,02-23-2026 15:50,Moyen,Backend,Julie Tremblay
-KZ-049,Gestion multi-tenant,Développements informatiques,Terminé,02-18-2026 10:00,02-25-2026 09:40,Très grand,Backend,Marc Gagnon
-KZ-050,Refonte système de notifications,Développements informatiques,Terminé,02-20-2026 13:30,02-26-2026 14:25,Grand,Backend,Sara Bouchard
-KZ-051,Correctif export Excel,Développements informatiques,Terminé,03-02-2026 09:00,03-02-2026 10:55,Petit,Backend,Julie Tremblay
-KZ-052,Intégration Slack,Développements informatiques,Terminé,03-04-2026 11:15,03-04-2026 15:30,Moyen,Intégrations,Marc Gagnon
-KZ-053,Gestion des accès API tiers,Développements informatiques,Terminé,03-06-2026 14:00,03-09-2026 11:15,Grand,Sécurité,Sara Bouchard
-KZ-054,Amélioration temps de chargement,Développements informatiques,Terminé,03-09-2026 09:15,03-11-2026 10:40,Moyen,Frontend,Julie Tremblay
-KZ-055,Système de tickets support,Développements informatiques,Terminé,03-11-2026 10:30,03-16-2026 14:00,Très grand,Backend,Marc Gagnon
-KZ-056,Correctif affichage dates,Développements informatiques,Terminé,03-13-2026 13:45,03-18-2026 09:30,Petit,Frontend,Sara Bouchard
-KZ-057,Tableau Kanban personnalisable,Développements informatiques,Terminé,03-16-2026 09:00,03-23-2026 15:10,Grand,Frontend,Julie Tremblay
-KZ-058,Sauvegarde incrémentielle BDD,Développements informatiques,Terminé,03-18-2026 11:00,03-25-2026 11:55,Moyen,DevOps,Marc Gagnon
-KZ-059,Mode hors-ligne PWA,Développements informatiques,Terminé,03-20-2026 14:30,03-30-2026 10:20,Très grand,Frontend,Sara Bouchard
-KZ-060,Correctif bug session expirée,Développements informatiques,Terminé,03-23-2026 09:45,03-30-2026 14:35,Petit,Backend,Julie Tremblay
-KZ-061,Gestion des favoris,Développements informatiques,Terminé,03-25-2026 10:00,04-01-2026 09:50,Moyen,Frontend,Marc Gagnon
-KZ-062,API GraphQL endpoints,Développements informatiques,Terminé,03-27-2026 13:15,04-06-2026 15:30,Grand,Backend,Sara Bouchard
-KZ-063,Optimisation mémoire workers,Développements informatiques,Terminé,03-30-2026 09:30,04-08-2026 11:10,Moyen,Backend,Julie Tremblay
-KZ-064,Système de tags avancé,Développements informatiques,Terminé,04-01-2026 11:00,04-09-2026 10:25,Grand,Frontend,Marc Gagnon
-KZ-065,Correctif pagination mobile,Développements informatiques,Terminé,04-03-2026 14:00,04-13-2026 14:50,Petit,Frontend,Sara Bouchard
-KZ-066,Automatisation déploiements,Développements informatiques,Terminé,04-06-2026 09:15,04-14-2026 09:30,Grand,DevOps,Julie Tremblay
-KZ-067,Filtres avancés tableaux,Développements informatiques,Terminé,04-08-2026 10:45,04-15-2026 15:20,Moyen,Frontend,Marc Gagnon
-KZ-068,Module statistiques avancées,Développements informatiques,Terminé,04-10-2026 13:00,04-20-2026 10:45,Très grand,Backend,Sara Bouchard
-KZ-069,Correctif calcul heures sup.,Développements informatiques,Terminé,04-13-2026 09:00,04-22-2026 11:05,Petit,Backend,Julie Tremblay
-KZ-070,Refonte onboarding utilisateur,Développements informatiques,Terminé,04-15-2026 11:15,04-28-2026 14:30,Grand,Frontend,Marc Gagnon
+KZ-001,Migrate auth to OAuth 2.0,Delivery,Done,10-15-2025 09:00,11-04-2025 14:30,Très grand,Security,Sophie Martin
+KZ-002,Fix login redirect bug,Delivery,Done,10-20-2025 10:00,11-06-2025 10:15,Petit,Backend,Luc Beaulieu
+KZ-003,Redesign settings page,Delivery,Done,10-22-2025 09:00,11-11-2025 11:00,Très grand,Frontend,Sophie Martin
+KZ-004,Add CSV export to reports,Delivery,Done,10-25-2025 14:00,11-13-2025 15:30,Moyen,Backend,Luc Beaulieu
+KZ-005,Implement webhook delivery,Delivery,Done,10-28-2025 09:30,11-18-2025 10:45,Très grand,Backend,Sophie Martin
+KZ-006,Add retry logic for failed jobs,Delivery,Done,11-01-2025 10:00,11-20-2025 14:00,Grand,Backend,Luc Beaulieu
+KZ-007,Fix broken pagination on mobile,Delivery,Done,11-03-2025 09:00,11-25-2025 11:30,Petit,Frontend,Sophie Martin
+KZ-008,Add email notification digest,Delivery,Done,11-05-2025 14:30,11-27-2025 15:00,Grand,Backend,Luc Beaulieu
+KZ-009,Fix date formatting in exports,Delivery,Done,11-10-2025 09:00,12-09-2025 10:00,Petit,Backend,Sophie Martin
+KZ-010,Add bulk user import,Delivery,Done,11-12-2025 10:30,12-11-2025 14:15,Moyen,Backend,Luc Beaulieu
+KZ-011,Fix tooltip z-index on Safari,Delivery,Done,11-15-2025 09:00,12-15-2025 09:30,Petit,Frontend,Sophie Martin
+KZ-012,Fix empty state on dashboard,Delivery,Done,11-18-2025 14:00,12-16-2025 14:45,Petit,Frontend,Luc Beaulieu
+KZ-013,Add keyboard shortcuts,Delivery,Done,11-20-2025 09:30,12-22-2025 11:00,Petit,Frontend,Sophie Martin
+KZ-014,Fix rounding in tax calculation,Delivery,Done,11-22-2025 10:00,12-23-2025 15:30,Petit,Backend,Luc Beaulieu
+KZ-015,Add dark mode toggle,Delivery,Done,11-25-2025 09:00,12-29-2025 10:00,Moyen,Frontend,Sophie Martin
+KZ-016,Fix zero-division in billing,Delivery,Done,11-28-2025 14:00,01-06-2026 14:30,Petit,Backend,Luc Beaulieu
+KZ-017,Fix memory leak in worker,Delivery,Done,12-01-2025 09:00,01-08-2026 11:00,Petit,Backend,Sophie Martin
+KZ-018,Add chart legend toggle,Delivery,Done,12-03-2025 10:30,01-12-2026 10:15,Moyen,Frontend,Luc Beaulieu
+KZ-019,Fix search on special chars,Delivery,Done,12-05-2025 09:00,01-14-2026 15:00,Petit,Backend,Sophie Martin
+KZ-020,Fix chart render on resize,Delivery,Done,12-08-2025 14:00,01-19-2026 11:30,Petit,Frontend,Luc Beaulieu
+KZ-021,Add SSO support (SAML),Delivery,Done,12-10-2025 09:30,01-27-2026 10:00,Très grand,Security,Sophie Martin
+KZ-022,Migrate to new queue system,Delivery,Done,12-15-2025 10:00,01-29-2026 14:30,Très grand,Backend,Luc Beaulieu
+KZ-023,Add audit log viewer,Delivery,Done,12-17-2025 09:00,02-03-2026 11:00,Grand,Security,Sophie Martin
+KZ-024,Build real-time dashboard,Delivery,Done,12-20-2025 14:30,02-05-2026 15:45,Très grand,Frontend,Luc Beaulieu
+KZ-025,Add two-factor authentication,Delivery,Done,01-05-2026 09:00,02-10-2026 10:30,Très grand,Security,Sophie Martin
+KZ-026,Refactor billing engine,Delivery,Done,01-07-2026 10:00,02-12-2026 14:00,Très grand,Backend,Luc Beaulieu
+KZ-027,Implement data export pipeline,Delivery,Done,01-10-2026 09:30,02-17-2026 11:15,Très grand,Backend,Sophie Martin
+KZ-028,Add Slack integration,Delivery,Done,01-12-2026 14:00,02-19-2026 10:00,Très grand,Integrations,Luc Beaulieu
+KZ-029,Build API rate limiter,Delivery,Done,01-15-2026 09:00,02-24-2026 14:30,Très grand,Backend,Sophie Martin
+KZ-030,Add custom report builder,Delivery,Done,01-19-2026 10:30,02-26-2026 11:00,Très grand,Backend,Luc Beaulieu
+KZ-031,Add multi-currency support,Delivery,Done,01-22-2026 09:00,03-03-2026 10:15,Très grand,Backend,Sophie Martin
+KZ-032,Redesign onboarding flow,Delivery,Done,01-26-2026 14:00,03-05-2026 15:30,Grand,Frontend,Luc Beaulieu
+KZ-033,Add conditional logic to forms,Delivery,Done,01-28-2026 09:30,03-10-2026 11:00,Grand,Frontend,Sophie Martin
+KZ-034,Add usage analytics dashboard,Delivery,Done,02-02-2026 10:00,03-12-2026 14:15,Très grand,Backend,Luc Beaulieu
+KZ-035,Add drag-and-drop file upload,Delivery,Done,02-05-2026 09:00,03-17-2026 10:30,Grand,Frontend,Sophie Martin
+KZ-036,Add team performance report,Delivery,Done,02-09-2026 14:00,03-19-2026 15:00,Très grand,Backend,Luc Beaulieu
+KZ-037,Add usage analytics dashboard,Delivery,Done,02-12-2026 09:30,03-26-2026 11:30,Très grand,Backend,Sophie Martin
+KZ-038,Add inline data editing,Delivery,Done,02-16-2026 10:00,04-01-2026 10:00,Grand,Frontend,Luc Beaulieu
+KZ-039,Fix search index rebuild,Delivery,Done,02-18-2026 09:00,04-02-2026 14:30,Petit,Backend,Sophie Martin
+KZ-040,Add team performance report,Delivery,Done,02-23-2026 14:00,04-08-2026 11:00,Grand,Backend,Luc Beaulieu
+KZ-041,Improve error messages UX,Delivery,Done,02-25-2026 09:30,04-09-2026 15:15,Petit,Frontend,Sophie Martin
+KZ-042,Fix tooltip overlap on mobile,Delivery,Done,03-02-2026 10:00,04-14-2026 10:30,Petit,Frontend,Luc Beaulieu
+KZ-043,Add conditional branching,Delivery,Done,03-05-2026 09:00,04-16-2026 14:00,Moyen,Backend,Sophie Martin
+KZ-044,Refactor notification engine,Delivery,Done,03-09-2026 14:30,04-21-2026 11:30,Très grand,Backend,Luc Beaulieu
+KZ-045,Fix duplicate webhook events,Delivery,Done,03-12-2026 09:00,04-23-2026 10:00,Petit,Backend,Sophie Martin
+KZ-046,Add GDPR data export,Delivery,Done,03-16-2026 10:00,04-28-2026 14:15,Grand,Legal,Luc Beaulieu
+KZ-047,Fix broken CSV import,Delivery,Done,03-19-2026 09:30,04-30-2026 11:00,Moyen,Backend,Sophie Martin
+KZ-048,Add SSO attribute mapping,Delivery,Done,03-23-2026 14:00,05-05-2026 10:30,Moyen,Security,Luc Beaulieu
+KZ-049,Fix slow query on reports,Delivery,Done,03-26-2026 10:00,05-07-2026 14:00,Moyen,Backend,Sophie Martin
+KZ-050,Add PDF export for invoices,Delivery,Done,03-30-2026 09:00,05-12-2026 11:15,Très grand,Backend,Luc Beaulieu
+KZ-051,Fix timezone offset in calendar,Delivery,Done,04-02-2026 14:00,05-14-2026 15:30,Petit,Backend,Sophie Martin

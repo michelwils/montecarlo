@@ -37,6 +37,8 @@ python monte_carlo.py --formats
 
 The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.png` (override with `-o/--output-dir`).
 
+![Sample report](exemples/sample_report.png)
+
 ---
 
 ## Option reference
