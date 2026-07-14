@@ -437,6 +437,7 @@ def make_charts(
     lang: str = "en",
     output_dir: str = DEFAULT_OUTPUT_DIR,
     title: str | None = None,
+    description: str | None = None,
 ) -> None:
     if certainties is None:
         certainties = [80]
@@ -486,6 +487,9 @@ def make_charts(
     ax3 = fig.add_subplot(gs_charts[1, :])
 
     fig.suptitle(title or s["title"], fontsize=14, fontweight="bold", y=0.98, color=C_TEXT)
+    if description:
+        fig.text(0.5, 0.955, description, ha="center", va="top",
+                  fontsize=9.5, color=C_SUBTEXT)
 
     # --- Parameters panel ---
     ax_params.set_facecolor("#1E2336")
@@ -783,6 +787,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Language for the generated chart (default: en)")
     p.add_argument("-T", "--title", type=str, default=None,
                    help="Custom chart title (default: language-specific title)")
+    p.add_argument("-D", "--description", type=str, default=None,
+                   help="Optional subtitle/description shown below the chart title")
     p.add_argument("--formats", action="store_true",
                    help="List supported data formats and exit")
     return p
@@ -913,6 +919,7 @@ def main() -> None:
         lang=args.lang,
         output_dir=args.output_dir,
         title=args.title,
+        description=args.description,
     )
 
 
