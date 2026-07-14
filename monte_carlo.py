@@ -436,6 +436,7 @@ def make_charts(
     n_simulations: int = 10_000,
     lang: str = "en",
     output_dir: str = DEFAULT_OUTPUT_DIR,
+    title: str | None = None,
 ) -> None:
     if certainties is None:
         certainties = [80]
@@ -484,7 +485,7 @@ def make_charts(
     ax2 = fig.add_subplot(gs_charts[0, 1])
     ax3 = fig.add_subplot(gs_charts[1, :])
 
-    fig.suptitle(s["title"], fontsize=14, fontweight="bold", y=0.98, color=C_TEXT)
+    fig.suptitle(title or s["title"], fontsize=14, fontweight="bold", y=0.98, color=C_TEXT)
 
     # --- Parameters panel ---
     ax_params.set_facecolor("#1E2336")
@@ -764,7 +765,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Number of X-Large items to deliver")
     p.add_argument("-p", "--points", type=int, default=0,
                    help="Extra points added directly to the target")
-    p.add_argument("-d", "--days-off", type=int, default=0,
+    p.add_argument("-d", "--start-date", type=str, default=None,
+               help="Simulation start date (format: YYYY-MM-DD)")
+    p.add_argument("-v", "--days-off", type=int, default=0,
                    help="Non-working days to subtract (vacation, sick leave, public holidays…)")
     p.add_argument("-n", "--simulations", type=int, default=N_SIMULATIONS,
                    metavar="N",
@@ -778,6 +781,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help=f"Directory for generated charts (default: {DEFAULT_OUTPUT_DIR})")
     p.add_argument("--lang", choices=list(CHART_STRINGS.keys()), default="en",
                    help="Language for the generated chart (default: en)")
+    p.add_argument("-T", "--title", type=str, default=None,
+                   help="Custom chart title (default: language-specific title)")
     p.add_argument("--formats", action="store_true",
                    help="List supported data formats and exit")
     return p
@@ -837,6 +842,14 @@ def main() -> None:
             sys.exit(1)
 
     # Simulation window
+    if args.start_date is not None:
+        start_date = parse_date(args.start_date)
+        if start_date is None:
+            print("❌ Invalid date format.", file=sys.stderr)
+            sys.exit(1)
+        else:
+            start_date = next_monday()
+
     start_date = next_monday()
     n_workdays  = args.weeks * 5 - args.days_off
     if n_workdays <= 0:
@@ -900,6 +913,7 @@ def main() -> None:
         n_simulations=args.simulations,
         lang=args.lang,
         output_dir=args.output_dir,
+        title=args.title,
     )
 
 
