@@ -847,10 +847,9 @@ def main() -> None:
         if start_date is None:
             print("❌ Invalid date format.", file=sys.stderr)
             sys.exit(1)
-        else:
-            start_date = next_monday()
+    else:
+        start_date = next_monday()
 
-    start_date = next_monday()
     n_workdays  = args.weeks * 5 - args.days_off
     if n_workdays <= 0:
         print("❌ Work day count is zero or negative.", file=sys.stderr)
