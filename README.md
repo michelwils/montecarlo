@@ -29,7 +29,7 @@ python monte_carlo.py -l 2 -m 3 -w 10
 python monte_carlo.py -l 2 -m 3 -w 10 -W 12
 
 # 42 direct points, 15 weeks, 5 days off, certainties at 80% and 90%, French chart
-python monte_carlo.py -p 42 -w 15 -d 5 -c 80 90 --lang fr
+python monte_carlo.py -p 42 -w 15 -v 5 -c 80 90 --lang fr
 
 # List supported formats
 python monte_carlo.py --formats
@@ -43,33 +43,38 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 
 ## Option reference
 
-| Short | Long              | Default      | Description |
+| Short | Long              | Default       | Description |
 |:---:|---|:---:|---|
-| `-f` | `--file`          | auto-detect  | Data file (CSV or TXT) |
-| `-s` | `--weeks`         | *(required)* | Simulation duration in weeks |
-| `-w` | `--window`        | all          | Most recent N history weeks to use |
-| `-G` | `--chart-weeks`   | `26`         | Weeks shown in the sensitivity chart (0 = all) |
-| `-p` | `--small`         | `0`          | Number of *Small* items (1 pt) |
-| `-m` | `--medium`        | `0`          | Number of *Medium* items (3 pts) |
-| `-g` | `--large`         | `0`          | Number of *Large* items (5 pts) |
-| `-t` | `--xlarge`        | `0`          | Number of *X-Large* items (8 pts) |
-| `-n` | `--points`        | `0`          | Extra points added directly to the target |
-| `-c` | `--holidays`      | `0`          | Non-working days to subtract (holidays, vacation…) |
-| `-i` | `--simulations`   | `10000`      | Number of Monte Carlo simulations |
-| `-d` | `--certainties`   | `80`         | Certainty levels to display (e.g. `-d 80 90 95`) |
-| `-a` | `--annotations`   | auto-detect  | CSV annotations file (see below) |
-| `-o` | `--output-dir`    | `output`     | Directory for generated charts |
-|      | `--lang`          | `en`         | Chart language: `en` or `fr` |
-|      | `--formats`       |              | List supported formats and exit |
+| `-f` | `--file`          | auto-detect   | Data file (CSV or TXT) |
+| `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks |
+| `-W` | `--window`        | all           | Most recent N history weeks to use |
+| `-G` | `--chart-weeks`   | `26`          | Weeks shown in the sensitivity chart (0 = all) |
+| `-t` | `--tiny`          | `0`           | Number of *Very Small* items (0.5 pt) |
+| `-s` | `--small`         | `0`           | Number of *Small* items (1 pt) |
+| `-m` | `--medium`        | `0`           | Number of *Medium* items (3 pts) |
+| `-l` | `--large`         | `0`           | Number of *Large* items (5 pts) |
+| `-x` | `--xlarge`        | `0`           | Number of *X-Large* items (8 pts) |
+| `-p` | `--points`        | `0`           | Extra points added directly to the target |
+| `-d` | `--start-date`    | next Monday   | Simulation start date (format: `YYYY-MM-DD`) |
+| `-v` | `--days-off`      | `0`           | Non-working days to subtract (vacation, sick leave, holidays…) |
+| `-n` | `--simulations`   | `10000`       | Number of Monte Carlo simulations |
+| `-c` | `--certainties`   | `80`          | Certainty levels to display (e.g. `-c 80 90 95`) |
+| `-a` | `--annotations`   | auto-detect   | CSV annotations file (see below) |
+| `-o` | `--output-dir`    | `output`      | Directory for generated charts |
+|      | `--lang`          | `en`          | Chart language: `en` or `fr` |
+| `-T` | `--title`         | language default | Custom chart title |
+| `-D` | `--description`   | none          | Optional subtitle shown below the chart title |
+|      | `--formats`       |               | List supported formats and exit |
 
 ### Item sizes and point values
 
-| Size    | Points |
+| Size       | Points |
 |:---:|:---:|
-| Small   | 1      |
-| Medium  | 3      |
-| Large   | 5      |
-| X-Large | 8      |
+| Very Small | 0.5    |
+| Small      | 1      |
+| Medium     | 3      |
+| Large      | 5      |
+| X-Large    | 8      |
 
 ---
 
@@ -81,8 +86,8 @@ Native export from [Kanban Zone](https://kanbanzone.com/). Required columns:
 
 | Column        | Description |
 |---|---|
-| `Done At`     | Completion date, format `MM-DD-YYYY HH:MM` |
-| `CF Envergure`| Item size: `Petit`, `Moyen`, `Grand`, or `Très grand` |
+| `Done At`     | Completion date, format `MM-DD-YYYY HH:MM` or `MM/DD/YYYY hh:mm AM/PM` |
+| `CF Envergure`| Item size: `Très petit`, `Petit`, `Moyen`, `Grand`, or `Très grand` |
 
 All other export columns are ignored. Detection is automatic: if both required columns are present in the header row, the file is recognized as a Kanban Zone export.
 
@@ -125,7 +130,7 @@ Date,Note
 2026-03-20,Deployment freeze — end of quarter
 ```
 
-Accepted date formats: `YYYY-MM-DD`, `YYYY/MM/DD`, or `MM-DD-YYYY HH:MM`.
+Accepted date formats: `YYYY-MM-DD`, `YYYY/MM/DD`, `MM-DD-YYYY HH:MM`, or `MM/DD/YYYY hh:mm AM/PM`.
 
 **Example file:** `exemples/annotations.csv`
 
