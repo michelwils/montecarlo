@@ -83,9 +83,9 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "ax2_title":         "Volume delivered in {n_weeks} weeks ({n_workdays} work days)\n({pct:.1f}% of {n:,} simulations reach the target)",
         "ax2_xlabel":        "Points delivered in {n_weeks} weeks",
         "ax2_ylabel":        "Number of simulations",
-        "ax2_target":        "Target\n{target:.0f} pts",
+        "ax2_target":        "Target\n{target:g} pts",
         # Chart 3 — sensitivity
-        "ax3_title":         "Sensitivity to history window\n(deliver {target:.0f} pts in {n_weeks} w.)",
+        "ax3_title":         "Sensitivity to history window\n(deliver {target:g} pts in {n_weeks} w.)",
         "ax3_xlabel":        "History window (weeks) — left: full history, right: recent only",
         "ax3_ylabel":        "Probability of delivering target (%)",
         "ax3_bar_ylabel":    "Throughput (pts / week)",
@@ -132,9 +132,9 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "ax2_title":         "Distribution du volume livré en {n_weeks} semaines ({n_workdays} j. trav.)\n({pct:.1f} % des {n:,} simulations atteignent la cible)",
         "ax2_xlabel":        "Points livrés en {n_weeks} semaines",
         "ax2_ylabel":        "Nombre de simulations",
-        "ax2_target":        "Cible\n{target:.0f} pts",
+        "ax2_target":        "Cible\n{target:g} pts",
         # Graphique 3 — sensibilité
-        "ax3_title":         "Sensibilité à la fenêtre d'historique\n(livrer {target:.0f} pts en {n_weeks} sem.)",
+        "ax3_title":         "Sensibilité à la fenêtre d'historique\n(livrer {target:g} pts en {n_weeks} sem.)",
         "ax3_xlabel":        "Fenêtre d'historique (semaines) — gauche : tout l'historique, droite : récent seulement",
         "ax3_ylabel":        "Probabilité de livrer la cible (%)",
         "ax3_bar_ylabel":    "Throughput (pts / semaine)",
@@ -522,7 +522,7 @@ def make_charts(
     params = [
         (s["param_file"],        Path(filepath).name),
         (s["param_format"],      format_str),
-        (s["param_target"],      f"{target_score:.0f} pts"),
+        (s["param_target"],      f"{target_score:g} pts"),
         (s["param_mix"],         mix_str),
         (s["param_duration"],    f"{n_weeks} {s['weeks_abbr']}"),
         (s["param_workdays"],    str(n_workdays)),
