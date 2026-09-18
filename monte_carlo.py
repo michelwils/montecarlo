@@ -534,25 +534,35 @@ def make_charts(
         (s["param_annotations"], annot_str),
     ]
 
-    n_params = len(params)
+    n_params  = len(params)
+    mix_lines = mix_str.count("\n") + 1
+    # 0.012 * 12 is the label→value line height in row units (see offset below);
+    # extra Mix lines each cost one such line, not a full row's worth of padding.
+    line_unit = 0.012 * 12
+    extra     = (mix_lines - 1) * line_unit
+    n_slots   = n_params + extra  # multi-line Mix consumes extra vertical space
+
+    slot = 0.0
     for i, (label, value) in enumerate(params):
-        y = 1.0 - (i + 0.35) / n_params
+        row_span = 1 + extra if label == s["param_mix"] else 1
+        y = 1.0 - (slot + 0.35) / n_slots
         ax_params.text(0.08, y, label,
                        transform=ax_params.transAxes,
                        ha="left", va="center",
                        fontsize=8, color=C_SUBTEXT,
                        fontfamily="monospace", fontweight="bold")
-        ax_params.text(0.08, y - 0.012 * (12 / n_params), value,
+        ax_params.text(0.08, y - 0.012 * (12 / n_slots), value,
                        transform=ax_params.transAxes,
                        ha="left", va="top",
                        fontsize=8.5, color=C_TEXT,
                        fontfamily="monospace")
         if i < n_params - 1:
-            sep_y = 1.0 - (i + 0.85) / n_params
+            sep_y = 1.0 - (slot + row_span - 0.15) / n_slots
             line = plt.Line2D([0.04, 0.96], [sep_y, sep_y],
                                transform=ax_params.transAxes,
                                color=C_GRID, linewidth=0.5, clip_on=False)
             ax_params.add_line(line)
+        slot += row_span
 
     def style_ax(ax):
         ax.set_facecolor(BG_AX)
