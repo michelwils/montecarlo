@@ -815,11 +815,11 @@ def main() -> None:
 
     # Target score
     target_score = (
-        args.tiny    * SCORES["Très petit"]
-        + args.small   * SCORES["Petit"]
-        + args.medium  * SCORES["Moyen"]
-        + args.large   * SCORES["Grand"]
-        + args.xlarge  * SCORES["Très grand"]
+        args.tiny * SCORES["Très petit"]
+        + args.small * SCORES["Petit"]
+        + args.medium * SCORES["Moyen"]
+        + args.large * SCORES["Grand"]
+        + args.xlarge * SCORES["Très grand"]
         + args.points
     )
 
