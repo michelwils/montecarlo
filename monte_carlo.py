@@ -508,7 +508,7 @@ def make_charts(
     if large:  mix_parts.append(f"{large} × {s['size_large']}")
     if xlarge: mix_parts.append(f"{xlarge} × {s['size_xlarge']}")
     if points: mix_parts.append(f"{points} pts")
-    mix_str = ("\n    + ".join(mix_parts)) if mix_parts else "—"
+    mix_str = ("\n+ ".join(mix_parts)) if mix_parts else "—"
 
     loader     = get_loader(filepath)
     format_str = loader.FORMAT_NAME if loader else Path(filepath).suffix.lstrip(".")
