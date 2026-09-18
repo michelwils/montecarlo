@@ -27,14 +27,14 @@ matplotlib.use("Agg")
 # ---------------------------------------------------------------------------
 
 # SCORES keys must remain in French: they match Kanban Zone's 'CF Envergure' values.
-SCORES = {"Petit": 1, "Moyen": 3, "Grand": 5, "Très grand": 8}
+SCORES = {"Très petit": 0.5, "Petit": 1, "Moyen": 3, "Grand": 5, "Très grand": 8}
 
 N_SIMULATIONS = 10_000
 DEFAULT_FILE             = "data/kanban_zone.csv"
 DEFAULT_THROUGHPUT_TXT   = "data/Throughput.txt"
 DEFAULT_ANNOTATIONS_FILE = "data/annotations.csv"
 DEFAULT_OUTPUT_DIR       = "output"
-DATE_FORMATS = ["%m-%d-%Y %H:%M", "%Y/%m/%d", "%Y-%m-%d"]
+DATE_FORMATS = ["%m-%d-%Y %H:%M", "%m/%d/%Y %I:%M %p", "%Y/%m/%d", "%Y-%m-%d"]
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +69,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "weeks_short":       "w",         # short form used inside labels (e.g. "3.0w")
         "days_abbr":         "d.",
         # Size names (must parallel SCORES key order)
+        "size_tiny":         "Very Small",
         "size_small":        "Small",
         "size_medium":       "Medium",
         "size_large":        "Large",
@@ -82,9 +83,9 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "ax2_title":         "Volume delivered in {n_weeks} weeks ({n_workdays} work days)\n({pct:.1f}% of {n:,} simulations reach the target)",
         "ax2_xlabel":        "Points delivered in {n_weeks} weeks",
         "ax2_ylabel":        "Number of simulations",
-        "ax2_target":        "Target\n{target:.0f} pts",
+        "ax2_target":        "Target\n{target:g} pts",
         # Chart 3 — sensitivity
-        "ax3_title":         "Sensitivity to history window\n(deliver {target:.0f} pts in {n_weeks} w.)",
+        "ax3_title":         "Sensitivity to history window\n(deliver {target:g} pts in {n_weeks} w.)",
         "ax3_xlabel":        "History window (weeks) — left: full history, right: recent only",
         "ax3_ylabel":        "Probability of delivering target (%)",
         "ax3_bar_ylabel":    "Throughput (pts / week)",
@@ -117,6 +118,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "weeks_short":       "s",
         "days_abbr":         "j.",
         # Noms des tailles (parallèle aux clés de SCORES)
+        "size_tiny":         "Très petit",
         "size_small":        "Petit",
         "size_medium":       "Moyen",
         "size_large":        "Grand",
@@ -130,9 +132,9 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "ax2_title":         "Distribution du volume livré en {n_weeks} semaines ({n_workdays} j. trav.)\n({pct:.1f} % des {n:,} simulations atteignent la cible)",
         "ax2_xlabel":        "Points livrés en {n_weeks} semaines",
         "ax2_ylabel":        "Nombre de simulations",
-        "ax2_target":        "Cible\n{target:.0f} pts",
+        "ax2_target":        "Cible\n{target:g} pts",
         # Graphique 3 — sensibilité
-        "ax3_title":         "Sensibilité à la fenêtre d'historique\n(livrer {target:.0f} pts en {n_weeks} sem.)",
+        "ax3_title":         "Sensibilité à la fenêtre d'historique\n(livrer {target:g} pts en {n_weeks} sem.)",
         "ax3_xlabel":        "Fenêtre d'historique (semaines) — gauche : tout l'historique, droite : récent seulement",
         "ax3_ylabel":        "Probabilité de livrer la cible (%)",
         "ax3_bar_ylabel":    "Throughput (pts / semaine)",
@@ -427,6 +429,7 @@ def make_charts(
     annotations: dict[date, list[str]] | None = None,
     display_window: int | None = 26,
     days_off: int = 0,
+    tiny: int = 0,
     small: int = 0,
     medium: int = 0,
     large: int = 0,
@@ -499,6 +502,7 @@ def make_charts(
         spine.set_edgecolor(C_GRID)
 
     mix_parts = []
+    if tiny:   mix_parts.append(f"{tiny} × {s['size_tiny']}")
     if small:  mix_parts.append(f"{small} × {s['size_small']}")
     if medium: mix_parts.append(f"{medium} × {s['size_medium']}")
     if large:  mix_parts.append(f"{large} × {s['size_large']}")
@@ -518,7 +522,7 @@ def make_charts(
     params = [
         (s["param_file"],        Path(filepath).name),
         (s["param_format"],      format_str),
-        (s["param_target"],      f"{target_score:.0f} pts"),
+        (s["param_target"],      f"{target_score:g} pts"),
         (s["param_mix"],         mix_str),
         (s["param_duration"],    f"{n_weeks} {s['weeks_abbr']}"),
         (s["param_workdays"],    str(n_workdays)),
@@ -759,6 +763,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-G", "--chart-weeks", type=int, default=26,
                    metavar="N",
                    help="Weeks shown in the bottom chart (default: 26 ≈ 6 months, 0 = all)")
+    p.add_argument("-t", "--tiny", type=int, default=0,
+                   help="Number of Very Small items to deliver")
     p.add_argument("-s", "--small", type=int, default=0,
                    help="Number of Small items to deliver")
     p.add_argument("-m", "--medium", type=int, default=0,
@@ -809,7 +815,8 @@ def main() -> None:
 
     # Target score
     target_score = (
-        args.small   * SCORES["Petit"]
+        args.tiny    * SCORES["Très petit"]
+        + args.small   * SCORES["Petit"]
         + args.medium  * SCORES["Moyen"]
         + args.large   * SCORES["Grand"]
         + args.xlarge  * SCORES["Très grand"]
@@ -880,10 +887,10 @@ def main() -> None:
     print(f"   Work days    : {n_workdays}")
     print(f"   Hist. window : {'full' if args.window is None else f'{args.window} weeks'}")
     print(f"   Certainties  : {', '.join(str(c)+'%' for c in sorted(args.certainties))}")
-    mix = f"{args.small}×Small + {args.medium}×Medium + {args.large}×Large + {args.xlarge}×X-Large"
+    mix = f"{args.tiny}×Very Small + {args.small}×Small + {args.medium}×Medium + {args.large}×Large + {args.xlarge}×X-Large"
     if args.points:
         mix += f" + {args.points} direct pts"
-    print(f"   Target       : {target_score} pts  ({mix})")
+    print(f"   Target       : {target_score:g} pts  ({mix})")
     print(f"   Source weeks : {len(daily)} wk., avg. throughput: {np.mean(samples):.1f} pts/wk.\n")
 
     # Run simulation
@@ -912,7 +919,7 @@ def main() -> None:
         args.window, n_workdays, fpath, sorted(args.certainties), annots,
         display_window,
         days_off=args.days_off,
-        small=args.small, medium=args.medium, large=args.large,
+        tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
         xlarge=args.xlarge, points=args.points,
         annot_file=args.annotations,
         n_simulations=args.simulations,
