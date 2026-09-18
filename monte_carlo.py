@@ -207,6 +207,25 @@ class ThroughputLoader:
         raise NotImplementedError
 
 
+def _fill_zero_weeks(weekly: dict[date, float]) -> dict[date, float]:
+    """
+    Insert an explicit 0.0 entry for every calendar week between the first
+    and last recorded week that has no completions of its own.
+    Without this, weeks with zero throughput are simply absent from the
+    dict instead of counting as zero, which silently skews the average
+    throughput upward and destabilizes small history-window sampling.
+    """
+    if not weekly:
+        return weekly
+    filled = dict(weekly)
+    monday = min(weekly)
+    last   = max(weekly)
+    while monday <= last:
+        filled.setdefault(monday, 0.0)
+        monday += timedelta(weeks=1)
+    return filled
+
+
 class KanbanZoneCSVLoader(ThroughputLoader):
     """
     Loader for Kanban Zone CSV exports.
@@ -254,6 +273,8 @@ class KanbanZoneCSVLoader(ThroughputLoader):
         for d, v in daily.items():
             monday = d - timedelta(days=d.weekday())
             weekly[monday] += v
+
+        weekly = _fill_zero_weeks(weekly)
 
         if window_weeks is not None:
             cutoff = max(weekly.keys()) - timedelta(weeks=window_weeks - 1)

@@ -91,6 +91,8 @@ Native export from [Kanban Zone](https://kanbanzone.com/). Required columns:
 
 All other export columns are ignored. Detection is automatic: if both required columns are present in the header row, the file is recognized as a Kanban Zone export.
 
+Calendar weeks with no completions between the first and last delivered item count as 0 pts of throughput — they are not skipped. Omitting them would silently inflate the average throughput and destabilize the sensitivity chart's small history windows.
+
 **Example file:** `exemples/kanban_zone.csv`
 
 ```bash
