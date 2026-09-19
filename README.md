@@ -48,6 +48,8 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 | `-f` | `--file`          | auto-detect   | Data file (CSV or TXT) |
 | `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks |
 | `-W` | `--window`        | all           | Most recent N history weeks to use |
+|      | `--window-start`  | none          | First completion date included in history (`YYYY-MM-DD`; use with `--window-end`, not with `-W`) |
+|      | `--window-end`    | none          | Last completion date included in history (`YYYY-MM-DD`; use with `--window-start`, not with `-W`) |
 | `-G` | `--chart-weeks`   | `26`          | Weeks shown in the sensitivity chart (0 = all) |
 | `-t` | `--tiny`          | `0`           | Number of *Very Small* items (0.5 pt) |
 | `-s` | `--small`         | `0`           | Number of *Small* items (1 pt) |

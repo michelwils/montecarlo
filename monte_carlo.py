@@ -63,6 +63,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "param_annotations": "Annotations",
         # Parameters panel values
         "window_full":       "full",
+        "window_range":      "{start} to {end}",
         "display_all":       "all",
         "none_val":          "none",
         "weeks_abbr":        "w.",        # long form (e.g. "12 w.")
@@ -112,6 +113,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "param_annotations": "Annotations",
         # Valeurs du panneau de paramètres
         "window_full":       "complète",
+        "window_range":      "{start} au {end}",
         "display_all":       "tout",
         "none_val":          "aucun",
         "weeks_abbr":        "sem.",
@@ -198,28 +200,45 @@ class ThroughputLoader:
         """Return True if this loader can handle the given file."""
         return Path(filepath).suffix.lower() in self.EXTENSIONS
 
-    def load(self, filepath: str, window_weeks: int | None) -> dict[date, float]:
+    def load(
+        self,
+        filepath: str,
+        window_weeks: int | None,
+        window_start: date | None = None,
+        window_end: date | None = None,
+    ) -> dict[date, float]:
         """
         Load throughput from filepath.
         Returns {week_monday: weekly_score_total}.
         When window_weeks is set, only the last N weeks are kept.
+        When window_start and window_end are set, only dates in that
+        inclusive range are kept.
         """
         raise NotImplementedError
 
 
-def _fill_zero_weeks(weekly: dict[date, float]) -> dict[date, float]:
+def _fill_zero_weeks(
+    weekly: dict[date, float],
+    start: date | None = None,
+    end: date | None = None,
+) -> dict[date, float]:
     """
-    Insert an explicit 0.0 entry for every calendar week between the first
-    and last recorded week that has no completions of its own.
+    Insert an explicit 0.0 entry for every calendar week with no
+    completions of its own, between `start` and `end` (each defaulting to
+    the first/last recorded week when omitted).
     Without this, weeks with zero throughput are simply absent from the
     dict instead of counting as zero, which silently skews the average
     throughput upward and destabilizes small history-window sampling.
+    Explicit `start`/`end` matter because a requested date range can have
+    empty weeks at its edges, before/after the first/last week that has
+    any data of its own — those would otherwise be dropped from the range
+    entirely instead of counting as zero.
     """
-    if not weekly:
+    if not weekly and start is None:
         return weekly
     filled = dict(weekly)
-    monday = min(weekly)
-    last   = max(weekly)
+    monday = start - timedelta(days=start.weekday()) if start is not None else min(weekly)
+    last   = end - timedelta(days=end.weekday()) if end is not None else max(weekly)
     while monday <= last:
         filled.setdefault(monday, 0.0)
         monday += timedelta(weeks=1)
@@ -250,7 +269,13 @@ class KanbanZoneCSVLoader(ThroughputLoader):
         except Exception:
             return False
 
-    def load(self, filepath: str, window_weeks: int | None) -> dict[date, float]:
+    def load(
+        self,
+        filepath: str,
+        window_weeks: int | None,
+        window_start: date | None = None,
+        window_end: date | None = None,
+    ) -> dict[date, float]:
         daily: dict[date, float] = defaultdict(float)
         with open(filepath, newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
@@ -261,6 +286,10 @@ class KanbanZoneCSVLoader(ThroughputLoader):
                     continue
                 d = parse_date(done_raw)
                 if d is None:
+                    continue
+                if window_start is not None and d < window_start:
+                    continue
+                if window_end is not None and d > window_end:
                     continue
                 daily[d] += SCORES[envergure]
 
@@ -274,7 +303,7 @@ class KanbanZoneCSVLoader(ThroughputLoader):
             monday = d - timedelta(days=d.weekday())
             weekly[monday] += v
 
-        weekly = _fill_zero_weeks(weekly)
+        weekly = _fill_zero_weeks(weekly, start=window_start, end=window_end)
 
         if window_weeks is not None:
             cutoff = max(weekly.keys()) - timedelta(weeks=window_weeks - 1)
@@ -294,7 +323,13 @@ class TxtLoader(ThroughputLoader):
     DESCRIPTION = "Plain-text weekly throughput file (comma-separated values)"
     EXTENSIONS = [".txt"]
 
-    def load(self, filepath: str, window_weeks: int | None) -> dict[date, float]:
+    def load(
+        self,
+        filepath: str,
+        window_weeks: int | None,
+        window_start: date | None = None,
+        window_end: date | None = None,
+    ) -> dict[date, float]:
         with open(filepath, encoding="utf-8-sig") as f:
             raw = f.read()
         values = [float(v.strip()) for v in raw.split(",") if v.strip() != ""]
@@ -308,6 +343,13 @@ class TxtLoader(ThroughputLoader):
         for i, v in enumerate(reversed(values)):
             monday = last_monday - timedelta(weeks=i)
             weekly[monday] = v
+        if window_start is not None or window_end is not None:
+            weekly = {
+                monday: value
+                for monday, value in weekly.items()
+                if (window_start is None or monday >= window_start)
+                and (window_end is None or monday <= window_end)
+            }
         if window_weeks is not None:
             cutoff = max(weekly.keys()) - timedelta(weeks=window_weeks - 1)
             weekly = {k: v for k, v in weekly.items() if k >= cutoff}
@@ -330,7 +372,12 @@ def get_loader(filepath: str) -> ThroughputLoader | None:
     return None
 
 
-def load_throughput_auto(filepath: str, window_weeks: int | None) -> dict[date, float]:
+def load_throughput_auto(
+    filepath: str,
+    window_weeks: int | None,
+    window_start: date | None = None,
+    window_end: date | None = None,
+) -> dict[date, float]:
     """
     Unified entry point: auto-detect the format and load throughput.
     Prints a warning if no loader matches.
@@ -345,7 +392,7 @@ def load_throughput_auto(filepath: str, window_weeks: int | None) -> dict[date, 
             file=sys.stderr,
         )
         return {}
-    return loader.load(filepath, window_weeks)
+    return loader.load(filepath, window_weeks, window_start, window_end)
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +499,8 @@ def make_charts(
     target_score: float,
     n_weeks: int,
     window_weeks: int | None,
+    window_start: date | None,
+    window_end: date | None,
     n_workdays: int,
     filepath: str,
     certainties: list[int] | None = None,
@@ -542,7 +591,10 @@ def make_charts(
     loader     = get_loader(filepath)
     format_str = loader.FORMAT_NAME if loader else Path(filepath).suffix.lstrip(".")
 
-    fenetre_str    = s["window_full"] if window_weeks is None else f"{window_weeks} {s['weeks_abbr']}"
+    if window_start is not None and window_end is not None:
+        fenetre_str = s["window_range"].format(start=window_start, end=window_end)
+    else:
+        fenetre_str = s["window_full"] if window_weeks is None else f"{window_weeks} {s['weeks_abbr']}"
     display_str    = s["display_all"] if display_window is None else f"{display_window} {s['weeks_abbr']}"
     certainties_str = ", ".join(f"{c}%" for c in certainties)
     days_off_str   = f"{days_off} {s['days_abbr']}" if days_off else s["none_val"]
@@ -665,7 +717,9 @@ def make_charts(
     # --- Chart 3: Probability vs. history window ---
     style_ax(ax3)
 
-    all_daily = load_throughput_auto(filepath, window_weeks=None)
+    all_daily = load_throughput_auto(
+        filepath, window_weeks=None, window_start=window_start, window_end=window_end
+    )
     if all_daily:
         max_possible_weeks = int(
             (max(all_daily.keys()) - min(all_daily.keys())).days / 7
@@ -681,7 +735,9 @@ def make_charts(
         probs = []
         rng_chart = np.random.default_rng(42)
         for w in window_range:
-            d = load_throughput_auto(filepath, window_weeks=w)
+            d = load_throughput_auto(
+                filepath, window_weeks=w, window_start=window_start, window_end=window_end
+            )
             if not d:
                 probs.append(0.0)
                 continue
@@ -800,6 +856,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Simulation duration in weeks (required)")
     p.add_argument("-W", "--window", type=int, default=None,
                    help="Number of most recent history weeks to use (default: all)")
+    p.add_argument("--window-start", type=str, default=None,
+                   help="First completion date included in historical data (YYYY-MM-DD)")
+    p.add_argument("--window-end", type=str, default=None,
+                   help="Last completion date included in historical data (YYYY-MM-DD)")
     p.add_argument("-G", "--chart-weeks", type=int, default=26,
                    metavar="N",
                    help="Weeks shown in the bottom chart (default: 26 ≈ 6 months, 0 = all)")
@@ -867,6 +927,20 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
+    if (args.window_start is None) != (args.window_end is None):
+        parser.error("--window-start and --window-end must be used together")
+    if args.window is not None and args.window_start is not None:
+        parser.error("--window cannot be used with --window-start/--window-end")
+
+    window_start = parse_date(args.window_start) if args.window_start else None
+    window_end   = parse_date(args.window_end) if args.window_end else None
+    if args.window_start and window_start is None:
+        parser.error("Invalid --window-start date format; use YYYY-MM-DD")
+    if args.window_end and window_end is None:
+        parser.error("Invalid --window-end date format; use YYYY-MM-DD")
+    if window_start is not None and window_end is not None and window_end < window_start:
+        parser.error("--window-end must be on or after --window-start")
+
     # Resolve data file
     if args.file is not None:
         fpath = args.file
@@ -909,7 +983,12 @@ def main() -> None:
         sys.exit(1)
 
     # Load throughput
-    daily = load_throughput_auto(fpath, window_weeks=args.window)
+    daily = load_throughput_auto(
+        fpath,
+        window_weeks=args.window,
+        window_start=window_start,
+        window_end=window_end,
+    )
     if not daily:
         print("❌ Could not load throughput data.", file=sys.stderr)
         sys.exit(1)
@@ -925,7 +1004,12 @@ def main() -> None:
     print(f"   Duration     : {args.weeks} weeks")
     print(f"   Days off     : {args.days_off} days")
     print(f"   Work days    : {n_workdays}")
-    print(f"   Hist. window : {'full' if args.window is None else f'{args.window} weeks'}")
+    history_window = (
+        f"{window_start} to {window_end}"
+        if window_start is not None and window_end is not None
+        else ('full' if args.window is None else f'{args.window} weeks')
+    )
+    print(f"   Hist. window : {history_window}")
     print(f"   Certainties  : {', '.join(str(c)+'%' for c in sorted(args.certainties))}")
     mix = f"{args.tiny}×Very Small + {args.small}×Small + {args.medium}×Medium + {args.large}×Large + {args.xlarge}×X-Large"
     if args.points:
@@ -956,7 +1040,7 @@ def main() -> None:
     display_window = None if args.chart_weeks == 0 else args.chart_weeks
     make_charts(
         weeks_arr, items_arr, target_score, args.weeks,
-        args.window, n_workdays, fpath, sorted(args.certainties), annots,
+        args.window, window_start, window_end, n_workdays, fpath, sorted(args.certainties), annots,
         display_window,
         days_off=args.days_off,
         tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
