@@ -11,6 +11,7 @@ from montecarlo.cli import (
     main,
     resolve_data_file,
     resolve_start_date,
+    resolve_weeks,
     resolve_window,
 )
 from montecarlo.strings import CHART_STRINGS
@@ -129,6 +130,46 @@ class TestResolveWindow:
             resolve_window(args, parser)
 
 
+class TestResolveWeeks:
+    def test_uses_weeks_directly_when_no_target_date(self):
+        parser = build_parser()
+        args = parser.parse_args(["-w", "7"])
+        assert resolve_weeks(args, parser, date(2026, 1, 5)) == (7, None)
+
+    def test_derives_weeks_from_target_date_ceiling(self):
+        # 2026-01-05 (Mon) -> 2026-01-19 (Mon) is exactly 14 days = 2 weeks.
+        parser = build_parser()
+        args = parser.parse_args(["--target-date", "2026-01-19"])
+        weeks, target_date = resolve_weeks(args, parser, date(2026, 1, 5))
+        assert weeks == 2
+        assert target_date == date(2026, 1, 19)
+
+    def test_partial_week_rounds_up(self):
+        # 15 days -> 2.14 weeks -> ceil to 3.
+        parser = build_parser()
+        args = parser.parse_args(["--target-date", "2026-01-20"])
+        weeks, _ = resolve_weeks(args, parser, date(2026, 1, 5))
+        assert weeks == 3
+
+    def test_target_date_on_start_date_is_rejected(self):
+        parser = build_parser()
+        args = parser.parse_args(["--target-date", "2026-01-05"])
+        with pytest.raises(SystemExit):
+            resolve_weeks(args, parser, date(2026, 1, 5))
+
+    def test_target_date_before_start_date_is_rejected(self):
+        parser = build_parser()
+        args = parser.parse_args(["--target-date", "2026-01-01"])
+        with pytest.raises(SystemExit):
+            resolve_weeks(args, parser, date(2026, 1, 5))
+
+    def test_invalid_target_date_format_is_rejected(self):
+        parser = build_parser()
+        args = parser.parse_args(["--target-date", "not-a-date"])
+        with pytest.raises(SystemExit):
+            resolve_weeks(args, parser, date(2026, 1, 5))
+
+
 class TestResolveDataFile:
     def test_returns_explicit_file_when_it_exists(self):
         args = build_parser().parse_args(["-w", "1", "-f", SAMPLE_KANBAN_CSV])
@@ -162,6 +203,21 @@ class TestMainValidation:
             main()
         assert exc.value.code == 1
         assert "usage" in capsys.readouterr().out.lower()
+
+    def test_no_weeks_and_no_target_date_prints_help_and_exits(self, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["monte_carlo.py", "-s", "5"])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+        assert "usage" in capsys.readouterr().out.lower()
+
+    def test_weeks_and_target_date_together_are_rejected(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "-s", "5", "-w", "8", "--target-date", "2026-12-31",
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
 
     def test_unplanned_ratio_of_one_is_rejected(self, monkeypatch):
         monkeypatch.setattr("sys.argv", [
@@ -235,6 +291,20 @@ class TestMainEndToEnd:
         main()
         out = capsys.readouterr().out
         assert "Probability of delivering" in out
+        assert len(list(tmp_path.glob("*.png"))) == 1
+
+    def test_target_date_derives_weeks_and_shows_in_summary(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "-f", SAMPLE_KANBAN_CSV,
+            "-m", "3", "-d", "2026-01-05", "--target-date", "2026-01-19",
+            "-n", "200",
+            "-o", str(tmp_path),
+        ])
+        main()
+        out = capsys.readouterr().out
+        label_width = 14  # must match montecarlo.cli's console label column width
+        assert f"{EN['param_duration']:<{label_width}}: 2 weeks (until 2026-01-19)" in out
         assert len(list(tmp_path.glob("*.png"))) == 1
 
     def test_unplanned_ratio_shown_and_lowers_probability(self, tmp_path, monkeypatch, capsys):

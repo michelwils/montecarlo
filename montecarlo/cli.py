@@ -74,6 +74,30 @@ def resolve_window(
     return window_start, window_end
 
 
+def resolve_weeks(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, start_date: date
+) -> tuple[int, date | None]:
+    """
+    Return (weeks, target_date). Exactly one of --weeks/--target-date must
+    be given; when --target-date is used, weeks is derived as
+    ceil(days until the target / 7) — an approximation consistent with
+    the rest of the tool treating a week as a fixed unit, not an exact
+    business-day count.
+    """
+    if args.target_date is None:
+        return args.weeks, None
+
+    target_date = parse_date(args.target_date)
+    if target_date is None:
+        parser.error("Invalid --target-date format; use YYYY-MM-DD")
+    if target_date <= start_date:
+        parser.error("--target-date must be after the simulation start date")
+
+    days_remaining = (target_date - start_date).days
+    weeks = -(-days_remaining // 7)  # ceiling division
+    return weeks, target_date
+
+
 def resolve_data_file(args: argparse.Namespace, s: dict[str, str]) -> str:
     """
     Return the throughput file to use: the explicit -f/--file if given
@@ -125,7 +149,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-f", "--file", default=None,
                    help=f"Data file (CSV or TXT). Default: {DEFAULT_FILE} then {DEFAULT_THROUGHPUT_TXT}")
     p.add_argument("-w", "--weeks", type=int, default=None,
-                   help="Simulation duration in weeks (required)")
+                   help="Simulation duration in weeks (required, unless -e/--target-date is used)")
+    p.add_argument("-e", "--target-date", type=str, default=None,
+                   help="Target delivery date (YYYY-MM-DD) instead of -w/--weeks; "
+                        "weeks is derived as the ceiling of (target date - start date) / 7 days")
     p.add_argument("-W", "--window", type=int, default=None,
                    help="Number of most recent history weeks to use (default: all)")
     p.add_argument("--window-start", type=str, default=None,
@@ -195,9 +222,12 @@ def main() -> None:
         sys.exit(0)
 
     target_score = compute_target_score(args)
-    if target_score == 0 or args.weeks is None:
+    if target_score == 0 or (args.weeks is None and args.target_date is None):
         parser.print_help()
         sys.exit(1)
+
+    if args.weeks is not None and args.target_date is not None:
+        parser.error("--weeks and --target-date cannot be used together")
 
     if not (0.0 <= args.unplanned_ratio < 1.0):
         parser.error("--unplanned-ratio must be between 0 and 1 (exclusive of 1)")
@@ -205,8 +235,9 @@ def main() -> None:
     window_start, window_end = resolve_window(args, parser)
     fpath = resolve_data_file(args, s)
     start_date = resolve_start_date(args, s)
+    weeks, target_date = resolve_weeks(args, parser, start_date)
 
-    n_workdays  = args.weeks * 5 - args.days_off
+    n_workdays  = weeks * 5 - args.days_off
     if n_workdays <= 0:
         print(f"❌ {s['console_zero_workdays']}", file=sys.stderr)
         sys.exit(1)
@@ -231,7 +262,10 @@ def main() -> None:
     print(f"\n📋 {s['console_config_header']}")
     print(f"   {s['param_file']:<{label_width}}: {fpath}  [{format_label}]")
     print(f"   {s['console_sim_start']:<{label_width}}: {start_date} {s['console_monday_suffix']}")
-    print(f"   {s['param_duration']:<{label_width}}: {args.weeks} {s['console_weeks_word']}")
+    duration_str = f"{weeks} {s['console_weeks_word']}"
+    if target_date is not None:
+        duration_str += f" ({s['console_until'].format(date=target_date)})"
+    print(f"   {s['param_duration']:<{label_width}}: {duration_str}")
     print(f"   {s['param_holidays']:<{label_width}}: {args.days_off} {s['console_days_word']}")
     print(f"   {s['param_workdays']:<{label_width}}: {n_workdays}")
     unplanned_str = f"{args.unplanned_ratio:.0%}" if args.unplanned_ratio else s["none_val"]
@@ -261,16 +295,16 @@ def main() -> None:
     print(s["console_running"].format(n=args.simulations))
     rng = np.random.default_rng()
     weeks_arr, items_arr = simulate(
-        samples, target_score, n_workdays, args.simulations, rng, n_weeks=args.weeks,
+        samples, target_score, n_workdays, args.simulations, rng, n_weeks=weeks,
         unplanned_ratio=args.unplanned_ratio,
     )
 
     # Statistics
-    pct_ok = 100 * np.sum(weeks_arr <= args.weeks) / args.simulations
+    pct_ok = 100 * np.sum(weeks_arr <= weeks) / args.simulations
     for p in sorted(args.certainties):
         val = np.nanpercentile(weeks_arr, p)
         print(f"   {s['console_certainty_line'].format(p=p, val=val)}")
-    print(f"\n   🎯 {s['console_probability'].format(n=args.weeks, pct=pct_ok)}\n")
+    print(f"\n   🎯 {s['console_probability'].format(n=weeks, pct=pct_ok)}\n")
 
     # Annotations
     annots = load_annotations(args.annotations)
@@ -280,10 +314,11 @@ def main() -> None:
     # Charts
     display_window = None if args.chart_weeks == 0 else args.chart_weeks
     make_charts(
-        weeks_arr, items_arr, target_score, args.weeks,
+        weeks_arr, items_arr, target_score, weeks,
         args.window, window_start, window_end, n_workdays, fpath, sorted(args.certainties), annots,
         display_window,
         days_off=args.days_off,
+        target_date=target_date,
         unplanned_ratio=args.unplanned_ratio,
         tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
         xlarge=args.xlarge, points=args.points,

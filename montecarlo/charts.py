@@ -38,7 +38,7 @@ def _draw_params_panel(
     format_str: str,
     target_score: float,
     mix_str: str,
-    n_weeks: int,
+    duration_str: str,
     n_workdays: int,
     days_off_str: str,
     unplanned_str: str,
@@ -59,7 +59,7 @@ def _draw_params_panel(
         (s["param_format"],      format_str),
         (s["param_target"],      f"{target_score:g} pts"),
         (s["param_mix"],         mix_str),
-        (s["param_duration"],    f"{n_weeks} {s['weeks_abbr']}"),
+        (s["param_duration"],    duration_str),
         (s["param_workdays"],    str(n_workdays)),
         (s["param_holidays"],    days_off_str),
         (s["param_unplanned"],   unplanned_str),
@@ -334,6 +334,7 @@ def make_charts(
     annotations: dict[date, list[str]] | None = None,
     display_window: int | None = 26,
     days_off: int = 0,
+    target_date: date | None = None,
     unplanned_ratio: float = 0.0,
     tiny: int = 0,
     small: int = 0,
@@ -415,11 +416,14 @@ def make_charts(
     days_off_str    = f"{days_off} {s['days_abbr']}" if days_off else s["none_val"]
     unplanned_str   = f"{unplanned_ratio:.0%}" if unplanned_ratio else s["none_val"]
     annot_str       = Path(annot_file).name if annot_file else s["none_val"]
+    duration_str    = f"{n_weeks} {s['weeks_abbr']}"
+    if target_date is not None:
+        duration_str += f" ({s['console_until'].format(date=target_date)})"
 
     _draw_params_panel(
         ax_params, s,
         filepath=filepath, format_str=format_str, target_score=target_score,
-        mix_str=mix_str, n_weeks=n_weeks, n_workdays=n_workdays,
+        mix_str=mix_str, duration_str=duration_str, n_workdays=n_workdays,
         days_off_str=days_off_str, unplanned_str=unplanned_str,
         fenetre_str=fenetre_str, display_str=display_str,
         certainties_str=certainties_str, n_simulations=n_simulations, annot_str=annot_str,

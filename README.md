@@ -40,6 +40,9 @@ python monte_carlo.py -l 2 -m 3 -w 10 -W 12
 # 42 direct points, 15 weeks, 5 days off, certainties at 80% and 90%, French chart
 python monte_carlo.py -p 42 -w 15 -v 5 -c 80 90 --lang fr
 
+# Same idea, but expressed as a delivery deadline instead of a week count
+python monte_carlo.py -p 42 -e 2026-12-15 -v 5 -c 80 90 --lang fr
+
 # List supported formats
 python monte_carlo.py --formats
 ```
@@ -55,7 +58,8 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 | Short | Long              | Default       | Description |
 |:---:|---|:---:|---|
 | `-f` | `--file`          | auto-detect   | Data file (CSV or TXT) |
-| `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks |
+| `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks (or use `-e`) |
+| `-e` | `--target-date`   | none          | Target delivery date (`YYYY-MM-DD`) instead of `-w`; weeks = ceil((target − start) / 7 days) |
 | `-W` | `--window`        | all           | Most recent N history weeks to use |
 |      | `--window-start`  | none          | First completion date included in history (`YYYY-MM-DD`; use with `--window-end`, not with `-W`) |
 |      | `--window-end`    | none          | Last completion date included in history (`YYYY-MM-DD`; use with `--window-start`, not with `-W`) |
