@@ -16,9 +16,17 @@ def simulate(
     n_sim: int = N_SIMULATIONS,
     rng: np.random.Generator | None = None,
     n_weeks: int | None = None,
+    unplanned_ratio: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Run Monte Carlo simulations.
+
+    unplanned_ratio: fraction (0-1) of each week's throughput draw to
+        discount, modeling capacity that will be consumed by ad hoc work
+        that can't be planned for in advance (e.g. a plain-text
+        throughput file with no per-card detail to derive this from
+        automatically — Kanban Zone CSVs with a 'CF Prioritaire' field
+        already exclude that work at the source; see loaders.py).
 
     Returns:
         weeks_to_deliver — weeks needed to reach the target score (NaN if
@@ -33,6 +41,7 @@ def simulate(
     # E.g. 10 holidays over 15 weeks → each week is worth (75-10)/(15×5) = 86.7%
     n_weeks_window = n_weeks if n_weeks is not None else (n_workdays // 5)
     days_off_factor = n_workdays / (n_weeks_window * 5) if n_weeks_window > 0 else 1.0
+    focus_factor    = 1.0 - unplanned_ratio
 
     # Hard ceiling on simulated weeks: if the historical sample is all
     # zeros (e.g. a narrow history window that lands on a genuine
@@ -48,7 +57,7 @@ def simulate(
     done           = np.zeros(n_sim, dtype=bool)
     week           = 0
     while not done.all() and week < MAX_SIM_WEEKS:
-        draw = rng.choice(samples, size=n_sim, replace=True) * days_off_factor
+        draw = rng.choice(samples, size=n_sim, replace=True) * days_off_factor * focus_factor
         totals += draw
         week   += 1
         if week <= n_weeks_window:

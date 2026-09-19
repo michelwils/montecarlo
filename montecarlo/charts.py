@@ -41,6 +41,7 @@ def _draw_params_panel(
     n_weeks: int,
     n_workdays: int,
     days_off_str: str,
+    unplanned_str: str,
     fenetre_str: str,
     display_str: str,
     certainties_str: str,
@@ -61,6 +62,7 @@ def _draw_params_panel(
         (s["param_duration"],    f"{n_weeks} {s['weeks_abbr']}"),
         (s["param_workdays"],    str(n_workdays)),
         (s["param_holidays"],    days_off_str),
+        (s["param_unplanned"],   unplanned_str),
         (s["param_window"],      fenetre_str),
         (s["param_chart"],       display_str),
         (s["param_certainties"], certainties_str),
@@ -197,6 +199,7 @@ def _draw_sensitivity_chart(
     display_window: int | None,
     certainties: list[int],
     annotations: dict[date, list[str]],
+    unplanned_ratio: float = 0.0,
 ) -> None:
     """Chart 3: probability of delivering vs. history window used."""
     _style_axis(ax3)
@@ -231,7 +234,8 @@ def _draw_sensitivity_chart(
             continue
         samp = weekly_samples(d)
         wk, _ = simulate(samp, target_score, n_workdays, n_sim=2000,
-                          rng=rng_chart, n_weeks=n_weeks)
+                          rng=rng_chart, n_weeks=n_weeks,
+                          unplanned_ratio=unplanned_ratio)
         probs.append(100 * np.sum(wk <= n_weeks) / 2000)
 
     x_labels = [s["all_label"] if w is None else str(w) for w in window_range]
@@ -330,6 +334,7 @@ def make_charts(
     annotations: dict[date, list[str]] | None = None,
     display_window: int | None = 26,
     days_off: int = 0,
+    unplanned_ratio: float = 0.0,
     tiny: int = 0,
     small: int = 0,
     medium: int = 0,
@@ -400,13 +405,15 @@ def make_charts(
     display_str     = s["display_all"] if display_window is None else f"{display_window} {s['weeks_abbr']}"
     certainties_str = ", ".join(f"{c}%" for c in certainties)
     days_off_str    = f"{days_off} {s['days_abbr']}" if days_off else s["none_val"]
+    unplanned_str   = f"{unplanned_ratio:.0%}" if unplanned_ratio else s["none_val"]
     annot_str       = Path(annot_file).name if annot_file else s["none_val"]
 
     _draw_params_panel(
         ax_params, s,
         filepath=filepath, format_str=format_str, target_score=target_score,
         mix_str=mix_str, n_weeks=n_weeks, n_workdays=n_workdays,
-        days_off_str=days_off_str, fenetre_str=fenetre_str, display_str=display_str,
+        days_off_str=days_off_str, unplanned_str=unplanned_str,
+        fenetre_str=fenetre_str, display_str=display_str,
         certainties_str=certainties_str, n_simulations=n_simulations, annot_str=annot_str,
     )
 
@@ -427,6 +434,7 @@ def make_charts(
         window_start=window_start, window_end=window_end,
         target_score=target_score, n_workdays=n_workdays, n_weeks=n_weeks,
         display_window=display_window, certainties=certainties, annotations=annotations,
+        unplanned_ratio=unplanned_ratio,
     )
 
     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -163,6 +163,22 @@ class TestMainValidation:
         assert exc.value.code == 1
         assert "usage" in capsys.readouterr().out.lower()
 
+    def test_unplanned_ratio_of_one_is_rejected(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "-s", "5", "-w", "8", "-u", "1.0",
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
+
+    def test_negative_unplanned_ratio_is_rejected(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "-s", "5", "-w", "8", "-u", "-0.1",
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
+
     def test_window_and_window_start_are_mutually_exclusive(self, monkeypatch):
         monkeypatch.setattr("sys.argv", [
             "monte_carlo.py", "-s", "5", "-w", "8", "-W", "4",
@@ -220,6 +236,34 @@ class TestMainEndToEnd:
         out = capsys.readouterr().out
         assert "Probability of delivering" in out
         assert len(list(tmp_path.glob("*.png"))) == 1
+
+    def test_unplanned_ratio_shown_and_lowers_probability(self, tmp_path, monkeypatch, capsys):
+        common_args = [
+            "monte_carlo.py",
+            "-f", SAMPLE_KANBAN_CSV,
+            "-m", "8", "-w", "6",
+            "-n", "500",
+        ]
+
+        label_width = 14  # must match montecarlo.cli's console label column width
+
+        monkeypatch.setattr("sys.argv", common_args + ["-o", str(tmp_path / "baseline")])
+        main()
+        baseline_out = capsys.readouterr().out
+        assert f"{EN['param_unplanned']:<{label_width}}: {EN['none_val']}" in baseline_out
+
+        monkeypatch.setattr(
+            "sys.argv", common_args + ["-u", "0.4", "-o", str(tmp_path / "discounted")]
+        )
+        main()
+        discounted_out = capsys.readouterr().out
+        assert f"{EN['param_unplanned']:<{label_width}}: 40%" in discounted_out
+
+        def probability(out: str) -> float:
+            line = next(l for l in out.splitlines() if "Probability of delivering" in l)
+            return float(line.split(":")[-1].strip().rstrip("%"))
+
+        assert probability(discounted_out) <= probability(baseline_out)
 
     def test_formats_flag_lists_loaders_and_exits_cleanly(self, monkeypatch, capsys):
         monkeypatch.setattr("sys.argv", ["monte_carlo.py", "--formats"])

@@ -18,7 +18,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
-from .constants import SCORES
+from .constants import ALL_SCORES
 from .dates import parse_date
 
 
@@ -88,18 +88,49 @@ def _apply_window_weeks(
     return {k: v for k, v in weekly.items() if k >= cutoff}
 
 
+# Kanban Zone custom field names are set by whoever created the board, so
+# both the French names used by this project's own team and their likely
+# English equivalents are accepted.
+_SIZE_COLUMNS      = ("CF Envergure", "CF Size")
+_UNPLANNED_COLUMNS = ("CF Prioritaire", "CF Exception")
+_UNPLANNED_TRUTHY  = {"true", "1", "yes", "oui"}
+
+
+def _get_field(row: dict[str, str], columns: tuple[str, ...]) -> str:
+    """Return the first non-empty value among the given column names."""
+    for col in columns:
+        val = row.get(col, "").strip()
+        if val:
+            return val
+    return ""
+
+
+def _is_unplanned(row: dict[str, str]) -> bool:
+    """
+    True if the row is flagged via Kanban Zone's 'CF Prioritaire'/
+    'CF Exception' field — an exception that bypassed the normal planning
+    process. Such cards consume real team capacity but can't be forecast
+    in advance, so they are excluded from the throughput used to project
+    planned work.
+    """
+    return _get_field(row, _UNPLANNED_COLUMNS).lower() in _UNPLANNED_TRUTHY
+
+
 class KanbanZoneCSVLoader(ThroughputLoader):
     """
     Loader for Kanban Zone CSV exports.
-    Required columns: 'Done At' and 'CF Envergure'.
-    Header inspection is used for detection to avoid ambiguity with other
-    CSV formats (Jira, Linear, etc.).
+    Required columns: 'Done At' and a size field ('CF Envergure' or
+    'CF Size'). Header inspection is used for detection to avoid
+    ambiguity with other CSV formats (Jira, Linear, etc.).
+
+    If an optional 'CF Prioritaire'/'CF Exception' column is present,
+    cards flagged true are excluded from throughput — see _is_unplanned().
     """
 
     FORMAT_NAME = "kanban_zone"
-    DESCRIPTION = "Kanban Zone CSV export (columns 'Done At' and 'CF Envergure')"
+    DESCRIPTION = "Kanban Zone CSV export (columns 'Done At' and 'CF Envergure'/'CF Size')"
     EXTENSIONS = [".csv"]
-    _REQUIRED_COLS = {"Done At", "CF Envergure"}
+    _REQUIRED_COLS = {"Done At"}
 
     def match(self, filepath: str) -> bool:
         if Path(filepath).suffix.lower() not in self.EXTENSIONS:
@@ -108,7 +139,9 @@ class KanbanZoneCSVLoader(ThroughputLoader):
         try:
             with open(filepath, newline="", encoding="utf-8-sig") as f:
                 headers = set(next(csv.reader(f)))
-            return self._REQUIRED_COLS.issubset(headers)
+            if not self._REQUIRED_COLS.issubset(headers):
+                return False
+            return any(col in headers for col in _SIZE_COLUMNS)
         except Exception:
             return False
 
@@ -124,8 +157,8 @@ class KanbanZoneCSVLoader(ThroughputLoader):
             reader = csv.DictReader(f)
             for row in reader:
                 done_raw  = row.get("Done At", "").strip()
-                envergure = row.get("CF Envergure", "").strip()
-                if not done_raw or envergure not in SCORES:
+                envergure = _get_field(row, _SIZE_COLUMNS)
+                if not done_raw or envergure not in ALL_SCORES:
                     continue
                 d = parse_date(done_raw)
                 if d is None:
@@ -134,7 +167,9 @@ class KanbanZoneCSVLoader(ThroughputLoader):
                     continue
                 if window_end is not None and d > window_end:
                     continue
-                daily[d] += SCORES[envergure]
+                if _is_unplanned(row):
+                    continue
+                daily[d] += ALL_SCORES[envergure]
 
         if not daily:
             print("⚠️  No throughput data found.", file=sys.stderr)

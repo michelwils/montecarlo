@@ -1,3 +1,4 @@
+import csv as csvmod
 from datetime import date
 
 import pytest
@@ -8,6 +9,8 @@ from montecarlo.loaders import (
     ThroughputLoader,
     TxtLoader,
     _fill_zero_weeks,
+    _get_field,
+    _is_unplanned,
     get_loader,
     load_throughput_auto,
 )
@@ -98,6 +101,12 @@ class TestKanbanZoneCSVLoader:
         bad.write_text("Date,Points\n2026-03-20,3\n", encoding="utf-8")
         assert loader.match(str(bad)) is False
 
+    def test_match_accepts_english_size_column(self, tmp_path):
+        loader = KanbanZoneCSVLoader()
+        path = tmp_path / "english.csv"
+        path.write_text("Done At,CF Size\n03-20-2026 10:00,Petit\n", encoding="utf-8")
+        assert loader.match(str(path)) is True
+
     def test_match_rejects_wrong_extension(self, kanban_csv):
         loader = KanbanZoneCSVLoader()
         assert loader.match("data.txt") is False
@@ -174,6 +183,82 @@ class TestKanbanZoneCSVLoader:
             window_start=date(2026, 1, 5), window_end=date(2026, 1, 19),
         )
         assert sum(weekly.values()) == 1.0
+
+    def test_excludes_cards_flagged_cf_prioritaire(self, tmp_path):
+        path = tmp_path / "kanban_zone.csv"
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csvmod.writer(f)
+            writer.writerow(["Done At", "CF Envergure", "CF Prioritaire"])
+            writer.writerow(["03-16-2026 09:00", "Grand", ""])      # planned, 5 pts
+            writer.writerow(["03-16-2026 10:00", "Moyen", "true"])  # ad hoc, excluded
+
+        weekly = KanbanZoneCSVLoader().load(str(path), window_weeks=None)
+        assert weekly == {date(2026, 3, 16): 5.0}
+
+    def test_no_cf_prioritaire_column_is_backward_compatible(self, kanban_csv):
+        # No 'CF Prioritaire' column at all (older exports, or the
+        # committed exemples/ file): nothing should be excluded.
+        path = kanban_csv([("03-16-2026 09:00", "Grand")])
+        weekly = KanbanZoneCSVLoader().load(path, window_weeks=None)
+        assert weekly == {date(2026, 3, 16): 5.0}
+
+    def test_reads_french_value_from_english_column_name(self, tmp_path):
+        # Custom field names are set per-board; a board created in an
+        # English UI may export 'CF Size' instead of 'CF Envergure', but
+        # still carry over French values if the board itself is French.
+        path = tmp_path / "kanban_zone.csv"
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csvmod.writer(f)
+            writer.writerow(["Done At", "CF Size"])
+            writer.writerow(["03-16-2026 09:00", "Grand"])
+        weekly = KanbanZoneCSVLoader().load(str(path), window_weeks=None)
+        assert weekly == {date(2026, 3, 16): 5.0}
+
+    def test_reads_english_size_values(self, tmp_path):
+        # A fully English board: 'CF Size' column with English values.
+        path = tmp_path / "kanban_zone.csv"
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csvmod.writer(f)
+            writer.writerow(["Done At", "CF Size"])
+            writer.writerow(["03-16-2026 09:00", "Large"])
+            writer.writerow(["03-16-2026 10:00", "X-Small"])
+        weekly = KanbanZoneCSVLoader().load(str(path), window_weeks=None)
+        assert weekly == {date(2026, 3, 16): 5.5}  # Large (5) + X-Small (0.5)
+
+    def test_excludes_cards_flagged_cf_exception(self, tmp_path):
+        # English equivalent of 'CF Prioritaire'.
+        path = tmp_path / "kanban_zone.csv"
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csvmod.writer(f)
+            writer.writerow(["Done At", "CF Envergure", "CF Exception"])
+            writer.writerow(["03-16-2026 09:00", "Grand", ""])
+            writer.writerow(["03-16-2026 10:00", "Moyen", "true"])
+        weekly = KanbanZoneCSVLoader().load(str(path), window_weeks=None)
+        assert weekly == {date(2026, 3, 16): 5.0}
+
+
+class TestGetField:
+    def test_returns_first_non_empty_value(self):
+        assert _get_field({"A": "", "B": "x"}, ("A", "B")) == "x"
+
+    def test_prefers_earlier_column_when_both_set(self):
+        assert _get_field({"A": "x", "B": "y"}, ("A", "B")) == "x"
+
+    def test_returns_empty_string_when_none_present(self):
+        assert _get_field({}, ("A", "B")) == ""
+
+
+class TestIsUnplanned:
+    @pytest.mark.parametrize("value", ["true", "True", "TRUE", "1", "yes", "oui"])
+    def test_truthy_values(self, value):
+        assert _is_unplanned({"CF Prioritaire": value}) is True
+
+    @pytest.mark.parametrize("value", ["", "false", "non", "0", "  "])
+    def test_falsy_values(self, value):
+        assert _is_unplanned({"CF Prioritaire": value}) is False
+
+    def test_missing_column_is_falsy(self):
+        assert _is_unplanned({}) is False
 
 
 class TestTxtLoader:

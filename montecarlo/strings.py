@@ -18,6 +18,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "param_duration":    "Duration",
         "param_workdays":    "Work days",
         "param_holidays":    "Days off",
+        "param_unplanned":   "Unplanned",
         "param_window":      "Hist. window",
         "param_chart":       "Chart",
         "param_certainties": "Certainties",
@@ -32,7 +33,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "weeks_short":       "w",         # short form used inside labels (e.g. "3.0w")
         "days_abbr":         "d.",
         # Size names (must parallel SCORES key order)
-        "size_tiny":         "Very Small",
+        "size_tiny":         "X-Small",
         "size_small":        "Small",
         "size_medium":       "Medium",
         "size_large":        "Large",
@@ -89,6 +90,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "param_duration":    "Durée",
         "param_workdays":    "Jours trav.",
         "param_holidays":    "Jours off",
+        "param_unplanned":   "Non planifié",
         "param_window":      "Fenêtre hist.",
         "param_chart":       "Graphique",
         "param_certainties": "Certitudes",

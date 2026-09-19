@@ -136,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
                    metavar="N",
                    help="Weeks shown in the bottom chart (default: 26 ≈ 6 months, 0 = all)")
     p.add_argument("-t", "--tiny", type=int, default=0,
-                   help="Number of Very Small items to deliver")
+                   help="Number of X-Small items to deliver")
     p.add_argument("-s", "--small", type=int, default=0,
                    help="Number of Small items to deliver")
     p.add_argument("-m", "--medium", type=int, default=0,
@@ -151,6 +151,12 @@ def build_parser() -> argparse.ArgumentParser:
                help="Simulation start date (format: YYYY-MM-DD)")
     p.add_argument("-v", "--days-off", type=int, default=0,
                    help="Non-working days to subtract (vacation, sick leave, public holidays…)")
+    p.add_argument("-u", "--unplanned-ratio", type=float, default=0.0,
+                   metavar="0-1",
+                   help="Fraction of weekly throughput to discount for unplanned/ad hoc work "
+                        "that can't be forecast (default: 0). Kanban Zone CSVs with a "
+                        "'CF Prioritaire' field already exclude that work automatically; use "
+                        "this for plain-text throughput files, or to add extra margin.")
     p.add_argument("-n", "--simulations", type=int, default=N_SIMULATIONS,
                    metavar="N",
                    help=f"Number of Monte Carlo simulations (default: {N_SIMULATIONS:,})")
@@ -193,6 +199,9 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
+    if not (0.0 <= args.unplanned_ratio < 1.0):
+        parser.error("--unplanned-ratio must be between 0 and 1 (exclusive of 1)")
+
     window_start, window_end = resolve_window(args, parser)
     fpath = resolve_data_file(args, s)
     start_date = resolve_start_date(args, s)
@@ -225,6 +234,8 @@ def main() -> None:
     print(f"   {s['param_duration']:<{label_width}}: {args.weeks} {s['console_weeks_word']}")
     print(f"   {s['param_holidays']:<{label_width}}: {args.days_off} {s['console_days_word']}")
     print(f"   {s['param_workdays']:<{label_width}}: {n_workdays}")
+    unplanned_str = f"{args.unplanned_ratio:.0%}" if args.unplanned_ratio else s["none_val"]
+    print(f"   {s['param_unplanned']:<{label_width}}: {unplanned_str}")
     if window_start is not None and window_end is not None:
         history_window = s["window_range"].format(start=window_start, end=window_end)
     elif args.window is None:
@@ -250,7 +261,8 @@ def main() -> None:
     print(s["console_running"].format(n=args.simulations))
     rng = np.random.default_rng()
     weeks_arr, items_arr = simulate(
-        samples, target_score, n_workdays, args.simulations, rng, n_weeks=args.weeks
+        samples, target_score, n_workdays, args.simulations, rng, n_weeks=args.weeks,
+        unplanned_ratio=args.unplanned_ratio,
     )
 
     # Statistics
@@ -272,6 +284,7 @@ def main() -> None:
         args.window, window_start, window_end, n_workdays, fpath, sorted(args.certainties), annots,
         display_window,
         days_off=args.days_off,
+        unplanned_ratio=args.unplanned_ratio,
         tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
         xlarge=args.xlarge, points=args.points,
         annot_file=args.annotations,

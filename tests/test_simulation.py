@@ -79,3 +79,25 @@ class TestSimulate:
         reduced = simulate(samples, 30.0, n_workdays=20, n_sim=5,
                             rng=np.random.default_rng(0), n_weeks=5)[0]
         assert np.all(reduced >= full)
+
+    def test_unplanned_ratio_default_is_a_no_op(self):
+        samples = np.array([10.0])
+        without = simulate(samples, 15.0, n_workdays=25, n_sim=5,
+                            rng=np.random.default_rng(0), n_weeks=5)[0]
+        explicit_zero = simulate(samples, 15.0, n_workdays=25, n_sim=5,
+                                  rng=np.random.default_rng(0), n_weeks=5,
+                                  unplanned_ratio=0.0)[0]
+        assert np.all(without == explicit_zero)
+
+    def test_unplanned_ratio_discounts_weekly_throughput(self):
+        # 10 pts/week at full focus: 15-point target reached in 2 weeks
+        # (10, 20 >= 15). At 50% unplanned ratio, effective throughput is
+        # 5 pts/week: reached in 3 weeks (5, 10, 15 >= 15).
+        samples = np.array([10.0])
+        full_focus = simulate(samples, 15.0, n_workdays=25, n_sim=5,
+                               rng=np.random.default_rng(0), n_weeks=5)[0]
+        half_focus = simulate(samples, 15.0, n_workdays=25, n_sim=5,
+                               rng=np.random.default_rng(0), n_weeks=5,
+                               unplanned_ratio=0.5)[0]
+        assert np.all(full_focus == 2.0)
+        assert np.all(half_focus == 3.0)

@@ -60,7 +60,7 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 |      | `--window-start`  | none          | First completion date included in history (`YYYY-MM-DD`; use with `--window-end`, not with `-W`) |
 |      | `--window-end`    | none          | Last completion date included in history (`YYYY-MM-DD`; use with `--window-start`, not with `-W`) |
 | `-G` | `--chart-weeks`   | `26`          | Weeks shown in the sensitivity chart (0 = all) |
-| `-t` | `--tiny`          | `0`           | Number of *Very Small* items (0.5 pt) |
+| `-t` | `--tiny`          | `0`           | Number of *X-Small* items (0.5 pt) |
 | `-s` | `--small`         | `0`           | Number of *Small* items (1 pt) |
 | `-m` | `--medium`        | `0`           | Number of *Medium* items (3 pts) |
 | `-l` | `--large`         | `0`           | Number of *Large* items (5 pts) |
@@ -68,6 +68,7 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 | `-p` | `--points`        | `0`           | Extra points added directly to the target |
 | `-d` | `--start-date`    | next Monday   | Simulation start date (format: `YYYY-MM-DD`) |
 | `-v` | `--days-off`      | `0`           | Non-working days to subtract (vacation, sick leave, holidays…) |
+| `-u` | `--unplanned-ratio` | `0`         | Fraction (0-1) of weekly throughput to discount for unplanned/ad hoc work (see below) |
 | `-n` | `--simulations`   | `10000`       | Number of Monte Carlo simulations |
 | `-c` | `--certainties`   | `80`          | Certainty levels to display (e.g. `-c 80 90 95`) |
 | `-a` | `--annotations`   | auto-detect   | CSV annotations file (see below) |
@@ -79,13 +80,15 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 
 ### Item sizes and point values
 
-| Size       | Points |
-|:---:|:---:|
-| Very Small | 0.5    |
-| Small      | 1      |
-| Medium     | 3      |
-| Large      | 5      |
-| X-Large    | 8      |
+| Size       | French (Kanban Zone) | Points |
+|:---:|:---:|:---:|
+| X-Small    | Très petit | 0.5 |
+| Small      | Petit      | 1   |
+| Medium     | Moyen      | 3   |
+| Large      | Grand      | 5   |
+| X-Large    | Très grand | 8   |
+
+Both columns are accepted wherever an item size is read from a data file (`CF Envergure`/`CF Size` values) — see `ALL_SCORES` in `montecarlo/constants.py`.
 
 ---
 
@@ -95,14 +98,16 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 
 Native export from [Kanban Zone](https://kanbanzone.com/). Required columns:
 
-| Column        | Description |
+| Column                          | Description |
 |---|---|
-| `Done At`     | Completion date, format `MM-DD-YYYY HH:MM` or `MM/DD/YYYY hh:mm AM/PM` |
-| `CF Envergure`| Item size: `Très petit`, `Petit`, `Moyen`, `Grand`, or `Très grand` |
+| `Done At`                       | Completion date, format `MM-DD-YYYY HH:MM` or `MM/DD/YYYY hh:mm AM/PM` |
+| `CF Envergure` or `CF Size`     | Item size: `Très petit`, `Petit`, `Moyen`, `Grand`, or `Très grand` |
 
-All other export columns are ignored. Detection is automatic: if both required columns are present in the header row, the file is recognized as a Kanban Zone export.
+Custom field names are set per-board, so both the French names this project's own team uses and their likely English equivalents are accepted — for both the column name and the size value inside it (`Petit` or `Small`, `Moyen` or `Medium`, …; see [Item sizes and point values](#item-sizes-and-point-values)). All other export columns are ignored. Detection is automatic: if `Done At` and one of the size column names are present in the header row, the file is recognized as a Kanban Zone export.
 
 Calendar weeks with no completions between the first and last delivered item count as 0 pts of throughput — they are not skipped. Omitting them would silently inflate the average throughput and destabilize the sensitivity chart's small history windows.
+
+If an optional `CF Prioritaire` (or `CF Exception`) column is present, cards flagged `true` are excluded from throughput entirely. These are Kanban Zone's exceptions that bypass the normal planning process (ad hoc / unplanned work) — since the simulation's target is built only from planned items, counting historical ad hoc work would overstate how much capacity is actually available for what you're forecasting.
 
 **Example file:** `exemples/kanban_zone.csv`
 
@@ -121,6 +126,8 @@ Simple format: comma-separated numeric values on a single line, ordered from old
 ```
 
 Synthetic dates are assigned automatically, anchoring the last value to the Monday of the previous week.
+
+This format has no per-card detail, so unplanned/ad hoc work can't be detected automatically the way it is for Kanban Zone's `CF Prioritaire` field — use `-u/--unplanned-ratio` to apply an equivalent manual discount.
 
 **Example file:** `exemples/throughput.txt`
 
