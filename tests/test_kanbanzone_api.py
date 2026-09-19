@@ -9,6 +9,7 @@ import pytest
 from montecarlo.kanbanzone_api import (
     KanbanZoneAPIError,
     cards_to_csv_rows,
+    compute_board_target,
     fetch_cards,
     write_cards_as_csv,
 )
@@ -170,3 +171,80 @@ class TestWriteCardsAsCsv:
             assert rows == []
         finally:
             os.unlink(path)
+
+
+def _card(column_state, size=None, done_at=None, archived_at=None):
+    custom_fields = [{"label": "Envergure", "value": size}] if size is not None else []
+    return {
+        "columnState": column_state,
+        "doneAt": done_at,
+        "archivedAt": archived_at,
+        "customFields": custom_fields,
+    }
+
+
+class TestComputeBoardTarget:
+    def test_sums_todo_state_start_only(self):
+        cards = [
+            _card("Start", "Grand"),      # 5 pts
+            _card("Backlog", "Petit"),    # uncommitted pool: deliberately excluded
+            _card("Done", "Très grand"),  # not todo/wip: ignored
+            _card("Archive", "Petit"),    # not todo/wip: ignored
+        ]
+        result = compute_board_target(cards, include_todo=True, include_wip=False)
+        assert result == {"todo": (5.0, 1, 0)}
+
+    def test_sums_wip_states_in_progress_and_buffer(self):
+        cards = [
+            _card("In Progress", "Moyen"),  # 3 pts
+            _card("Buffer", "Petit"),       # 1 pt
+            _card("Backlog", "Grand"),      # not wip: ignored
+        ]
+        result = compute_board_target(cards, include_todo=False, include_wip=True)
+        assert result == {"wip": (4.0, 2, 0)}
+
+    def test_both_categories_returned_together(self):
+        cards = [_card("Start", "Petit"), _card("In Progress", "Petit")]
+        result = compute_board_target(cards, include_todo=True, include_wip=True)
+        assert result == {"todo": (1.0, 1, 0), "wip": (1.0, 1, 0)}
+
+    def test_neither_flag_returns_empty_dict(self):
+        cards = [_card("Start", "Petit")]
+        assert compute_board_target(cards, include_todo=False, include_wip=False) == {}
+
+    def test_cards_with_no_readable_size_are_skipped_and_counted(self):
+        cards = [_card("Start", "Petit"), _card("Start", None), _card("Start", "not-a-size")]
+        result = compute_board_target(cards, include_todo=True, include_wip=False)
+        assert result == {"todo": (1.0, 1, 2)}
+
+    def test_uniform_size_overrides_size_field(self):
+        cards = [_card("Start"), _card("Start", "Grand")]
+        result = compute_board_target(cards, include_todo=True, include_wip=False, uniform_size=2.0)
+        assert result == {"todo": (4.0, 2, 0)}
+
+    def test_english_size_values_also_recognized(self):
+        cards = [
+            {"columnState": "Start", "customFields": [{"label": "Size", "value": "Small"}]},
+        ]
+        result = compute_board_target(cards, include_todo=True, include_wip=False)
+        assert result == {"todo": (1.0, 1, 0)}
+
+    def test_archived_cards_are_excluded_even_with_a_todo_or_wip_column_state(self):
+        # --include-archived widens fetch_cards() to also return archived
+        # cards, so throughput can include completed-but-archived work —
+        # but a card archived (e.g. cancelled) while still queued or in
+        # progress must not count toward the to-do/WIP target.
+        cards = [
+            _card("Start", "Grand", archived_at="2026-01-01T00:00:00.000Z"),
+            _card("In Progress", "Grand", archived_at="2026-01-01T00:00:00.000Z"),
+            _card("Start", "Petit"),  # active, still counts
+        ]
+        result = compute_board_target(cards, include_todo=True, include_wip=True)
+        assert result == {"todo": (1.0, 1, 0), "wip": (0.0, 0, 0)}
+
+    def test_backlog_is_never_counted_as_todo(self):
+        # Backlog is an uncommitted, not-yet-scheduled pool — unlike
+        # "Start" (committed, queued to begin soon), it never counts.
+        cards = [_card("Backlog", "Très grand")]
+        result = compute_board_target(cards, include_todo=True, include_wip=False)
+        assert result == {"todo": (0.0, 0, 0)}

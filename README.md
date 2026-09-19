@@ -61,6 +61,8 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 |      | `--board`         | none          | Fetch cards from this Kanban Zone board's publicId instead of a file (see below) |
 |      | `--api-key`       | none          | API key for `--board` (prefer the `KANBAN_ZONE_API_KEY` env var) |
 |      | `--include-archived` | off        | With `--board`, also fetch archived cards |
+|      | `--include-todo`  | off           | Add committed, queued-to-start cards (Kanban Zone's `Start` column state — not `Backlog`) to the target, computed from the board itself. Requires `--board` (see below) |
+|      | `--include-wip`   | off           | Add in-progress cards (`In Progress`/`Buffer` column states, i.e. WIP) to the target, computed from the board itself. Requires `--board` (see below) |
 | `-U` | `--uniform-size`  | none          | Count every completed card as this many points instead of reading `CF Size`/`CF Envergure` — for boards with no size field (see below) |
 | `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks (or use `-e`) |
 | `-e` | `--target-date`   | none          | Target delivery date (`YYYY-MM-DD`) instead of `-w`; weeks = ceil((target − start) / 7 days) |
@@ -182,6 +184,21 @@ python monte_carlo.py --board <boardPublicId> -w 12 -l 3 -m 4
 **If your team archives cards once they're done** (common — check by comparing throughput with and without `--include-archived`), the active-only default will undercount historical throughput significantly, since most completed work is no longer "active". `--include-archived` is worth using by default in that case.
 
 Requires an [API key](https://kanbanzone.com/2019/integrate-with-kanban-zones-api-to-create-cards/) from Organization Settings → API Key. This integration is built against observed API responses rather than Kanban Zone's own (JavaScript-rendered) developer docs — if a field name has changed, `montecarlo/kanbanzone_api.py` raises a clear error rather than silently producing wrong numbers.
+
+#### Deriving the target from the board itself
+
+Instead of entering the scope by hand (`-t/-s/-m/-l/-x/-p`), `--include-todo` and `--include-wip` sum the point value of cards currently on the board, using each card's own `CF Size`/`CF Envergure` value (or `-U/--uniform-size`, for a board with no size field):
+
+```bash
+python monte_carlo.py --board <boardPublicId> --include-todo --include-wip -w 8
+```
+
+- `--include-todo` — cards committed and queued to start soon (Kanban Zone's normalized `Start` column state; not `Backlog`, which is an uncommitted, not-yet-scheduled pool and is deliberately excluded)
+- `--include-wip` — cards already in progress (`In Progress`/`Buffer` column states, together forming WIP)
+
+Use either one alone to forecast just that slice of work (e.g. "how long to clear what's already in progress"), or both together for the full remaining scope. Both add to, rather than replace, any manually-specified `-t/-s/-m/-l/-x/-p`/`-p`. A card whose column state doesn't match either option (e.g. `Done`, `Archive`) is never counted, and a card that's been archived is always excluded from both, regardless of the column it's sitting in — `--include-archived` widens historical throughput to completed-but-archived cards, it doesn't mean an archived (e.g. cancelled) card should still count as scope. A matching card with no readable size is skipped and reported as a warning, the same way an unsized card is skipped from throughput.
+
+These column states are Kanban Zone's own normalization, independent of each column's actual (freeform, per-board, possibly translated) title — confirmed by inspecting two real boards with very different column setups.
 
 ---
 

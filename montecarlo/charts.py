@@ -349,6 +349,8 @@ def make_charts(
     large: int = 0,
     xlarge: int = 0,
     points: int = 0,
+    board_todo: tuple[float, int, int] | None = None,
+    board_wip: tuple[float, int, int] | None = None,
     annot_file: str | None = None,
     n_simulations: int = 10_000,
     lang: str = "en",
@@ -402,6 +404,12 @@ def make_charts(
     if large:  mix_parts.append(f"{large} × {s['size_large']}")
     if xlarge: mix_parts.append(f"{xlarge} × {s['size_xlarge']}")
     if points: mix_parts.append(f"{points} pts")
+    if board_todo is not None:
+        pts, matched, _skipped = board_todo
+        mix_parts.append(s["mix_board_todo"].format(n=f"{pts:g}", count=matched))
+    if board_wip is not None:
+        pts, matched, _skipped = board_wip
+        mix_parts.append(s["mix_board_wip"].format(n=f"{pts:g}", count=matched))
     if not mix_parts:
         mix_str = "—"
     elif len(mix_parts) == 1:

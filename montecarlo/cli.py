@@ -19,7 +19,12 @@ from .constants import (
     SCORES,
 )
 from .dates import next_monday, parse_date
-from .kanbanzone_api import KanbanZoneAPIError, fetch_cards, write_cards_as_csv
+from .kanbanzone_api import (
+    KanbanZoneAPIError,
+    compute_board_target,
+    fetch_cards,
+    write_cards_as_csv,
+)
 from .loaders import LOADERS, get_loader, load_throughput_auto
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
@@ -103,9 +108,15 @@ def resolve_weeks(
     return weeks, target_date
 
 
-def resolve_data_file(args: argparse.Namespace, s: dict[str, str]) -> str:
+def resolve_data_file(
+    args: argparse.Namespace, s: dict[str, str]
+) -> tuple[str, list[dict] | None]:
     """
-    Return the throughput file to use.
+    Return (filepath, board_cards) — the throughput file to use, and
+    the raw cards fetched from the Kanban Zone API when --board is
+    used (None otherwise). board_cards is also needed for
+    --include-todo/--include-wip, which read each card's current
+    column state — information the materialized CSV doesn't carry.
 
     If --board is given, fetch cards from the Kanban Zone API and
     materialize them as a temporary CSV file (see kanbanzone_api.py);
@@ -132,13 +143,13 @@ def resolve_data_file(args: argparse.Namespace, s: dict[str, str]) -> str:
         except KanbanZoneAPIError as e:
             print(f"\n❌ {s['console_api_error'].format(error=e)}", file=sys.stderr)
             sys.exit(1)
-        return write_cards_as_csv(cards)
+        return write_cards_as_csv(cards), cards
 
     if args.file is not None:
         if not Path(args.file).exists():
             print(f"\n❌ {s['console_file_not_found'].format(path=args.file)}", file=sys.stderr)
             sys.exit(1)
-        return args.file
+        return args.file, None
 
     candidates = []
     if Path(DEFAULT_FILE).exists():
@@ -154,7 +165,7 @@ def resolve_data_file(args: argparse.Namespace, s: dict[str, str]) -> str:
 
     for candidate in candidates:
         if load_throughput_auto(candidate, window_weeks=None, uniform_size=args.uniform_size):
-            return candidate
+            return candidate, None
     print(f"\n❌ {s['console_no_valid_data_file']}", file=sys.stderr)
     sys.exit(1)
 
@@ -216,6 +227,14 @@ def build_parser() -> argparse.ArgumentParser:
                         "key isn't stored in shell history or a config file.")
     p.add_argument("--include-archived", action="store_true",
                    help="With --board, also fetch archived cards (default: active cards only)")
+    p.add_argument("--include-todo", action="store_true",
+                   help="Add every card committed and queued to start soon (Kanban Zone's "
+                        "'Start' column state — not 'Backlog', an uncommitted pool) to the "
+                        "target, on top of -t/-s/-m/-l/-x/-p. Requires --board.")
+    p.add_argument("--include-wip", action="store_true",
+                   help="Add every card currently in progress (Kanban Zone's 'In Progress'/"
+                        "'Buffer' column states, i.e. WIP) to the target, on top of "
+                        "-t/-s/-m/-l/-x/-p. Requires --board.")
     p.add_argument("-U", "--uniform-size", type=float, default=None,
                    metavar="POINTS",
                    help="Count every completed card as worth this many points, ignoring "
@@ -290,8 +309,20 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
     """Run one full simulation + chart from an already-parsed args namespace."""
     s = CHART_STRINGS[args.lang]  # console + chart string table
 
+    if (args.include_todo or args.include_wip) and args.board is None:
+        parser.error("--include-todo/--include-wip require --board (column state isn't "
+                     "available from a CSV export)")
+
+    if args.weeks is None and args.target_date is None:
+        parser.print_help()
+        sys.exit(1)
+
     target_score = compute_target_score(args)
-    if target_score == 0 or (args.weeks is None and args.target_date is None):
+    board_breakdown: dict[str, tuple[float, int, int]] = {}
+    # A manual mix of 0 is normally a mistake (help + exit below), unless
+    # --include-todo/--include-wip will add to it once the board is
+    # fetched — so that check waits until after resolve_data_file() runs.
+    if target_score == 0 and not (args.include_todo or args.include_wip):
         parser.print_help()
         sys.exit(1)
 
@@ -302,10 +333,20 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         parser.error("--unplanned-ratio must be between 0 and 1 (exclusive of 1)")
 
     window_start, window_end = resolve_window(args, parser)
-    fpath = resolve_data_file(args, s)
+    fpath, board_cards = resolve_data_file(args, s)
     source_label = (
         s["console_board_source"].format(board=args.board) if args.board is not None else fpath
     )
+
+    if args.include_todo or args.include_wip:
+        board_breakdown = compute_board_target(
+            board_cards, args.include_todo, args.include_wip, args.uniform_size
+        )
+        target_score += sum(pts for pts, _matched, _skipped in board_breakdown.values())
+        if target_score == 0:
+            parser.print_help()
+            sys.exit(1)
+
     try:
         start_date = resolve_start_date(args, s)
         weeks, target_date = resolve_weeks(args, parser, start_date)
@@ -371,7 +412,20 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         )
         if args.points:
             mix += " + " + s["console_direct_pts"].format(n=args.points)
+        skip_warnings = []
+        for key, pts_key, skip_key in (
+            ("todo", "console_board_todo_pts", "console_board_todo_skipped"),
+            ("wip", "console_board_wip_pts", "console_board_wip_skipped"),
+        ):
+            if key not in board_breakdown:
+                continue
+            pts, matched, skipped = board_breakdown[key]
+            mix += " + " + s[pts_key].format(n=f"{pts:g}", count=matched)
+            if skipped:
+                skip_warnings.append(s[skip_key].format(n=skipped))
         print(f"   {s['param_target']:<{label_width}}: {target_score:g} pts  ({mix})")
+        for warning in skip_warnings:
+            print(f"   ⚠️  {warning}")
         print(f"   {s['console_source_weeks_label']:<{label_width}}: "
               f"{s['console_source_weeks'].format(n=len(daily), avg=np.mean(samples))}\n")
 
@@ -408,6 +462,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             source_label=source_label,
             tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
             xlarge=args.xlarge, points=args.points,
+            board_todo=board_breakdown.get("todo"), board_wip=board_breakdown.get("wip"),
             annot_file=args.annotations,
             n_simulations=args.simulations,
             lang=args.lang,

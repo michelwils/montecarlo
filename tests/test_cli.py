@@ -261,7 +261,7 @@ class TestResolveWeeks:
 class TestResolveDataFile:
     def test_returns_explicit_file_when_it_exists(self):
         args = build_parser().parse_args(["-w", "1", "-f", SAMPLE_KANBAN_CSV])
-        assert resolve_data_file(args, EN) == SAMPLE_KANBAN_CSV
+        assert resolve_data_file(args, EN) == (SAMPLE_KANBAN_CSV, None)
 
     def test_explicit_missing_file_exits(self):
         args = build_parser().parse_args(["-w", "1", "-f", "does/not/exist.csv"])
@@ -303,7 +303,7 @@ class TestResolveDataFile:
         ])
         result = resolve_data_file(args, EN)
 
-        assert result == fake_path
+        assert result == (fake_path, ["card1"])
         assert captured == {"board": "abc123", "api_key": "my-key", "include_archived": True}
 
     def test_board_uses_env_var_when_no_explicit_key(self, monkeypatch, tmp_path):
@@ -429,6 +429,22 @@ class TestMainValidation:
             main()
         assert exc.value.code == 1
 
+    def test_include_todo_without_board_is_rejected(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "-f", SAMPLE_KANBAN_CSV, "-w", "8", "--include-todo",
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
+
+    def test_include_wip_without_board_is_rejected(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "-f", SAMPLE_KANBAN_CSV, "-w", "8", "--include-wip",
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
+
 
 class TestMainEndToEnd:
     def test_full_run_produces_a_chart(self, tmp_path, monkeypatch, capsys):
@@ -540,6 +556,59 @@ class TestMainEndToEnd:
         assert "Kanban Zone API (board abc123)" in out
         assert len(list(tmp_path.glob("*.png"))) == 1
         assert not Path(written_path["path"]).exists(), "temp CSV should be deleted after the run"
+
+    def test_include_todo_and_wip_derive_the_target_from_the_board(self, tmp_path, monkeypatch, capsys):
+        done_cards = [
+            {
+                "columnState": "Done",
+                "doneAt": f"2026-0{m}-0{d}T10:00:00.000Z",
+                "customFields": [{"label": "Envergure", "value": "Moyen"}],
+            }
+            for m, d in [(1, 5), (2, 2), (3, 2), (4, 6), (5, 4)]
+        ]
+        not_done_cards = [
+            {"columnState": "Backlog", "doneAt": None,
+             "customFields": [{"label": "Envergure", "value": "Petit"}]},   # uncommitted pool: ignored
+            {"columnState": "Start", "doneAt": None,
+             "customFields": [{"label": "Envergure", "value": "Grand"}]},   # todo, 5 pts
+            {"columnState": "In Progress", "doneAt": None,
+             "customFields": [{"label": "Envergure", "value": "Petit"}]},   # wip, 1 pt
+            {"columnState": "Buffer", "doneAt": None,
+             "customFields": [{"label": "Envergure", "value": "Petit"}]},   # wip, 1 pt
+            {"columnState": "Archive", "doneAt": None,
+             "customFields": [{"label": "Envergure", "value": "Très grand"}]},  # ignored
+        ]
+        cards = done_cards + not_done_cards
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *a, **kw: cards)
+
+        import csv as csvmod
+        from montecarlo.kanbanzone_api import cards_to_csv_rows
+
+        def fake_write(cards):
+            path = tmp_path / "board_fetch.csv"
+            rows = cards_to_csv_rows(cards)
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                writer = csvmod.DictWriter(f, fieldnames=["Done At", "CF Envergure"])
+                writer.writeheader()
+                writer.writerows(rows)
+            return str(path)
+
+        monkeypatch.setattr("montecarlo.cli.write_cards_as_csv", fake_write)
+
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "--board", "abc123", "--api-key", "test-key",
+            "--include-todo", "--include-wip",
+            "-w", "4", "-n", "200",
+            "-o", str(tmp_path),
+        ])
+        main()
+        out = capsys.readouterr().out
+        # todo: 5 (Grand, "Start" only — "Backlog" is excluded); wip: 1 + 1 (Petit) = 2 pts; total 7 pts
+        assert "7 pts" in out
+        assert "5 pts To Do (1 cards)" in out
+        assert "2 pts WIP (2 cards)" in out
+        assert len(list(tmp_path.glob("*.png"))) == 1
 
     def test_runs_from_an_at_config_file(self, tmp_path, monkeypatch, capsys):
         config = tmp_path / "run.conf"

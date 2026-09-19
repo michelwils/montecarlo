@@ -24,6 +24,19 @@ responses rather than official reference documentation:
   itself, so it's reconstructed here for column-name compatibility).
   A checkbox-style custom field's "value" is a native JSON boolean,
   not the string "true" a CSV export would contain.
+
+  Each card also carries "columnState", a normalized value assigned by
+  Kanban Zone independent of that column's actual (freeform, per-board,
+  possibly translated) title — confirmed via GET
+  {BASE_URL}/boards/{{board}}/columns on two real boards (2026-09-19):
+  "Backlog", "Start", "In Progress", "Buffer", "Done", "Archive".
+  compute_board_target() uses this to derive a simulation target
+  straight from cards currently on the board (see --include-todo/
+  --include-wip), instead of requiring it to be entered by hand.
+  "Backlog" is deliberately excluded from --include-todo: it's an
+  undated, not-yet-committed pool (e.g. ideas slated for some future
+  session), unlike "Start" (committed, queued to begin soon) — see
+  _TODO_STATES.
 """
 import base64
 import csv
@@ -32,9 +45,19 @@ import tempfile
 import urllib.error
 import urllib.request
 
+from .constants import ALL_SCORES
+from .loaders import _SIZE_COLUMNS, _get_field
+
 BASE_URL = "https://integrations.kanbanzone.io/v1"
 PAGE_SIZE = 100
 REQUEST_TIMEOUT = 20
+
+# Kanban Zone's own normalized column states (see module docstring).
+# "To Do" = committed and queued to start soon ("Start" only — "Backlog"
+# is an uncommitted pool, not yet scheduled work, so it's excluded);
+# "WIP" = work already underway.
+_TODO_STATES = {"Start"}
+_WIP_STATES = {"In Progress", "Buffer"}
 
 
 class KanbanZoneAPIError(Exception):
@@ -139,3 +162,70 @@ def write_cards_as_csv(cards: list[dict]) -> str:
         writer.writeheader()
         writer.writerows(rows)
     return path
+
+
+def _card_size_points(card: dict, uniform_size: float | None) -> float | None:
+    """
+    Points for one card, or None if it can't be sized: no CF Size/CF
+    Envergure value and no uniform_size override — same rule
+    KanbanZoneCSVLoader applies to throughput.
+    """
+    if uniform_size is not None:
+        return uniform_size
+    row = {
+        f"CF {(cf.get('label') or '').strip()}": str(cf.get("value", ""))
+        for cf in card.get("customFields") or []
+    }
+    size = _get_field(row, _SIZE_COLUMNS)
+    return ALL_SCORES.get(size)
+
+
+def compute_board_target(
+    cards: list[dict],
+    include_todo: bool,
+    include_wip: bool,
+    uniform_size: float | None = None,
+) -> dict[str, tuple[float, int, int]]:
+    """
+    Sum the point value of cards currently sitting in matching column
+    states, as an alternative to entering -t/-s/-m/-l/-x/-p by hand.
+
+    include_todo matches "Start" (committed, queued to begin soon —
+    "Backlog" is deliberately excluded, see module docstring);
+    include_wip matches "In Progress"/"Buffer" (work already underway)
+    — see _TODO_STATES/_WIP_STATES.
+
+    Returns {"todo"|"wip": (points, matched_cards, skipped_cards)},
+    with only the requested categories present. skipped_cards counts
+    cards in a matching state that couldn't be sized (see
+    _card_size_points) — they're excluded from points.
+
+    A card with "archivedAt" set is always excluded here, even if its
+    columnState happens to be a to-do/WIP one — --include-archived (used
+    to fetch it in the first place) is meant to widen the historical
+    throughput to completed-but-archived cards, not to count cards that
+    were archived (e.g. cancelled) while still queued or in progress.
+    """
+    result: dict[str, tuple[float, int, int]] = {}
+    for key, states, wanted in (
+        ("todo", _TODO_STATES, include_todo),
+        ("wip", _WIP_STATES, include_wip),
+    ):
+        if not wanted:
+            continue
+        points = 0.0
+        matched = 0
+        skipped = 0
+        for card in cards:
+            if card.get("archivedAt"):
+                continue
+            if card.get("columnState") not in states:
+                continue
+            card_points = _card_size_points(card, uniform_size)
+            if card_points is None:
+                skipped += 1
+                continue
+            points += card_points
+            matched += 1
+        result[key] = (points, matched, skipped)
+    return result
