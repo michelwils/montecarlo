@@ -63,6 +63,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "param_annotations": "Annotations",
         # Parameters panel values
         "window_full":       "full",
+        "window_range":      "{start} to {end}",
         "display_all":       "all",
         "none_val":          "none",
         "weeks_abbr":        "w.",        # long form (e.g. "12 w.")
@@ -112,6 +113,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "param_annotations": "Annotations",
         # Valeurs du panneau de paramètres
         "window_full":       "complète",
+        "window_range":      "{start} au {end}",
         "display_all":       "tout",
         "none_val":          "aucun",
         "weeks_abbr":        "sem.",
@@ -215,19 +217,28 @@ class ThroughputLoader:
         raise NotImplementedError
 
 
-def _fill_zero_weeks(weekly: dict[date, float]) -> dict[date, float]:
+def _fill_zero_weeks(
+    weekly: dict[date, float],
+    start: date | None = None,
+    end: date | None = None,
+) -> dict[date, float]:
     """
-    Insert an explicit 0.0 entry for every calendar week between the first
-    and last recorded week that has no completions of its own.
+    Insert an explicit 0.0 entry for every calendar week with no
+    completions of its own, between `start` and `end` (each defaulting to
+    the first/last recorded week when omitted).
     Without this, weeks with zero throughput are simply absent from the
     dict instead of counting as zero, which silently skews the average
     throughput upward and destabilizes small history-window sampling.
+    Explicit `start`/`end` matter because a requested date range can have
+    empty weeks at its edges, before/after the first/last week that has
+    any data of its own — those would otherwise be dropped from the range
+    entirely instead of counting as zero.
     """
-    if not weekly:
+    if not weekly and start is None:
         return weekly
     filled = dict(weekly)
-    monday = min(weekly)
-    last   = max(weekly)
+    monday = start - timedelta(days=start.weekday()) if start is not None else min(weekly)
+    last   = end - timedelta(days=end.weekday()) if end is not None else max(weekly)
     while monday <= last:
         filled.setdefault(monday, 0.0)
         monday += timedelta(weeks=1)
@@ -292,7 +303,7 @@ class KanbanZoneCSVLoader(ThroughputLoader):
             monday = d - timedelta(days=d.weekday())
             weekly[monday] += v
 
-        weekly = _fill_zero_weeks(weekly)
+        weekly = _fill_zero_weeks(weekly, start=window_start, end=window_end)
 
         if window_weeks is not None:
             cutoff = max(weekly.keys()) - timedelta(weeks=window_weeks - 1)
@@ -573,7 +584,7 @@ def make_charts(
     format_str = loader.FORMAT_NAME if loader else Path(filepath).suffix.lstrip(".")
 
     if window_start is not None and window_end is not None:
-        fenetre_str = f"{window_start} to {window_end}"
+        fenetre_str = s["window_range"].format(start=window_start, end=window_end)
     else:
         fenetre_str = s["window_full"] if window_weeks is None else f"{window_weeks} {s['weeks_abbr']}"
     display_str    = s["display_all"] if display_window is None else f"{display_window} {s['weeks_abbr']}"
