@@ -57,7 +57,10 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 
 | Short | Long              | Default       | Description |
 |:---:|---|:---:|---|
-| `-f` | `--file`          | auto-detect   | Data file (CSV or TXT) |
+| `-f` | `--file`          | auto-detect   | Data file (CSV or TXT); not used with `--board` |
+|      | `--board`         | none          | Fetch cards from this Kanban Zone board's publicId instead of a file (see below) |
+|      | `--api-key`       | none          | API key for `--board` (prefer the `KANBAN_ZONE_API_KEY` env var) |
+|      | `--include-archived` | off        | With `--board`, also fetch archived cards |
 | `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks (or use `-e`) |
 | `-e` | `--target-date`   | none          | Target delivery date (`YYYY-MM-DD`) instead of `-w`; weeks = ceil((target − start) / 7 days) |
 | `-W` | `--window`        | all           | Most recent N history weeks to use |
@@ -134,6 +137,28 @@ If an optional `CF Prioritaire` (or `CF Exception`) column is present, cards fla
 ```bash
 python monte_carlo.py -f exemples/kanban_zone.csv -w 12 -l 3 -m 4
 ```
+
+---
+
+### Kanban Zone API (live fetch)
+
+Instead of exporting a CSV by hand, fetch cards directly from a board:
+
+```bash
+python monte_carlo.py --board <boardPublicId> -w 12 -l 3 -m 4
+```
+
+| Option | Default | Description |
+|---|:---:|---|
+| `--board` | none | The board's public ID (from its URL, e.g. `kanbanzone.io/b/<publicId>`) |
+| `--api-key` | none | API key. **Prefer the `KANBAN_ZONE_API_KEY` environment variable instead** — this flag ends up in shell history and, if used in a config file, in a plaintext file on disk |
+| `--include-archived` | off (active cards only) | Also fetch archived cards |
+
+`--board` cannot be combined with `-f/--file`. Cards are converted to the same shape as a CSV export (`Done At`, `CF <label>` per custom field — the API's field labels have no `CF ` prefix; it's added back here to match the CSV column-naming convention) and written to a temporary file for the duration of the run, so the exact same parsing, zero-week-filling, and `CF Prioritaire`/`CF Exception` exclusion logic applies either way.
+
+**If your team archives cards once they're done** (common — check by comparing throughput with and without `--include-archived`), the active-only default will undercount historical throughput significantly, since most completed work is no longer "active". `--include-archived` is worth using by default in that case.
+
+Requires an [API key](https://kanbanzone.com/2019/integrate-with-kanban-zones-api-to-create-cards/) from Organization Settings → API Key. This integration is built against observed API responses rather than Kanban Zone's own (JavaScript-rendered) developer docs — if a field name has changed, `montecarlo/kanbanzone_api.py` raises a clear error rather than silently producing wrong numbers.
 
 ---
 
@@ -269,6 +294,7 @@ montecarlo/              Implementation package
     strings.py            Chart text tables (en/fr) — CHART_STRINGS
     dates.py              Date parsing helpers
     loaders.py             Loader registry (ThroughputLoader, LOADERS) — see "Adding a new data format"
+    kanbanzone_api.py       Live Kanban Zone API fetch (--board), adapted into a CSV loaders.py reads
     annotations.py         Annotations CSV loading
     simulation.py           Core Monte Carlo simulation
     theme.py                Chart colour palette

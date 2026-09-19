@@ -247,6 +247,69 @@ class TestResolveDataFile:
         with pytest.raises(SystemExit):
             resolve_data_file(args, EN)
 
+    def test_board_and_file_together_exits(self, monkeypatch):
+        monkeypatch.delenv("KANBAN_ZONE_API_KEY", raising=False)
+        args = build_parser().parse_args([
+            "-w", "1", "-f", SAMPLE_KANBAN_CSV, "--board", "abc123", "--api-key", "k",
+        ])
+        with pytest.raises(SystemExit):
+            resolve_data_file(args, EN)
+
+    def test_board_without_api_key_exits(self, monkeypatch):
+        monkeypatch.delenv("KANBAN_ZONE_API_KEY", raising=False)
+        args = build_parser().parse_args(["-w", "1", "--board", "abc123"])
+        with pytest.raises(SystemExit):
+            resolve_data_file(args, EN)
+
+    def test_board_fetches_and_writes_temp_csv(self, monkeypatch, tmp_path):
+        fake_path = str(tmp_path / "fetched.csv")
+        fake_path_file = Path(fake_path)
+        fake_path_file.write_text("Done At\n", encoding="utf-8")
+
+        captured = {}
+
+        def fake_fetch_cards(board, api_key, include_archived=False):
+            captured["board"] = board
+            captured["api_key"] = api_key
+            captured["include_archived"] = include_archived
+            return ["card1"]
+
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", fake_fetch_cards)
+        monkeypatch.setattr("montecarlo.cli.write_cards_as_csv", lambda cards: fake_path)
+
+        args = build_parser().parse_args([
+            "-w", "1", "--board", "abc123", "--api-key", "my-key", "--include-archived",
+        ])
+        result = resolve_data_file(args, EN)
+
+        assert result == fake_path
+        assert captured == {"board": "abc123", "api_key": "my-key", "include_archived": True}
+
+    def test_board_uses_env_var_when_no_explicit_key(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("KANBAN_ZONE_API_KEY", "env-key")
+        captured = {}
+        monkeypatch.setattr(
+            "montecarlo.cli.fetch_cards",
+            lambda board, api_key, include_archived=False: captured.update(api_key=api_key) or [],
+        )
+        monkeypatch.setattr("montecarlo.cli.write_cards_as_csv", lambda cards: str(tmp_path / "x.csv"))
+        (tmp_path / "x.csv").write_text("Done At\n", encoding="utf-8")
+
+        args = build_parser().parse_args(["-w", "1", "--board", "abc123"])
+        resolve_data_file(args, EN)
+        assert captured["api_key"] == "env-key"
+
+    def test_board_api_error_exits(self, monkeypatch):
+        from montecarlo.kanbanzone_api import KanbanZoneAPIError
+
+        def raise_error(board, api_key, include_archived=False):
+            raise KanbanZoneAPIError("boom")
+
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", raise_error)
+        args = build_parser().parse_args(["-w", "1", "--board", "abc123", "--api-key", "k"])
+        with pytest.raises(SystemExit):
+            resolve_data_file(args, EN)
+
 
 class TestResolveStartDate:
     def test_defaults_to_next_monday(self):
@@ -359,6 +422,46 @@ class TestMainEndToEnd:
         out = capsys.readouterr().out
         assert "Probability of delivering" in out
         assert len(list(tmp_path.glob("*.png"))) == 1
+
+    def test_runs_from_the_api_and_cleans_up_the_temp_file(self, tmp_path, monkeypatch, capsys):
+        cards = [
+            {
+                "doneAt": f"2026-0{m}-0{d}T10:00:00.000Z",
+                "customFields": [{"label": "Envergure", "value": "Moyen"}],
+            }
+            for m, d in [(1, 5), (2, 2), (3, 2), (4, 6), (5, 4)]
+        ]
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *a, **kw: cards)
+
+        written_path = {}
+
+        def fake_write(cards):
+            # Use the real row-building logic, but write to our own
+            # tracked path so we can assert it gets cleaned up.
+            import csv as csvmod
+            from montecarlo.kanbanzone_api import cards_to_csv_rows
+            path = tmp_path / "board_fetch.csv"
+            rows = cards_to_csv_rows(cards)
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                writer = csvmod.DictWriter(f, fieldnames=["Done At", "CF Envergure"])
+                writer.writeheader()
+                writer.writerows(rows)
+            written_path["path"] = str(path)
+            return str(path)
+
+        monkeypatch.setattr("montecarlo.cli.write_cards_as_csv", fake_write)
+
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "--board", "abc123", "--api-key", "test-key",
+            "-m", "1", "-w", "4", "-n", "200",
+            "-o", str(tmp_path),
+        ])
+        main()
+        out = capsys.readouterr().out
+        assert "Kanban Zone API (board abc123)" in out
+        assert len(list(tmp_path.glob("*.png"))) == 1
+        assert not Path(written_path["path"]).exists(), "temp CSV should be deleted after the run"
 
     def test_runs_from_an_at_config_file(self, tmp_path, monkeypatch, capsys):
         config = tmp_path / "run.conf"

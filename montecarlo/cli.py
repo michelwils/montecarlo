@@ -1,5 +1,6 @@
 """Command-line interface: argument parsing and the main entry point."""
 import argparse
+import os
 import re
 import sys
 from datetime import date
@@ -18,9 +19,12 @@ from .constants import (
     SCORES,
 )
 from .dates import next_monday, parse_date
+from .kanbanzone_api import KanbanZoneAPIError, fetch_cards, write_cards_as_csv
 from .loaders import LOADERS, get_loader, load_throughput_auto
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
+
+API_KEY_ENV_VAR = "KANBAN_ZONE_API_KEY"
 
 
 def _ensure_utf8_streams() -> None:
@@ -101,10 +105,35 @@ def resolve_weeks(
 
 def resolve_data_file(args: argparse.Namespace, s: dict[str, str]) -> str:
     """
-    Return the throughput file to use: the explicit -f/--file if given
-    (validated to exist), otherwise the first working default candidate.
-    Prints a translated error and exits (code 1) if none is usable.
+    Return the throughput file to use.
+
+    If --board is given, fetch cards from the Kanban Zone API and
+    materialize them as a temporary CSV file (see kanbanzone_api.py);
+    the caller is responsible for deleting this file once done with it
+    (main() does, via a try/finally keyed on args.board being set).
+    Otherwise, use the explicit -f/--file if given (validated to
+    exist), or the first working default candidate.
+
+    Prints a translated error and exits (code 1) on any failure.
     """
+    if args.board is not None:
+        if args.file is not None:
+            print(f"\n❌ {s['console_file_and_board']}", file=sys.stderr)
+            sys.exit(1)
+        api_key = args.api_key or os.environ.get(API_KEY_ENV_VAR)
+        if not api_key:
+            print(
+                f"\n❌ {s['console_missing_api_key'].format(env_var=API_KEY_ENV_VAR)}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        try:
+            cards = fetch_cards(args.board, api_key, include_archived=args.include_archived)
+        except KanbanZoneAPIError as e:
+            print(f"\n❌ {s['console_api_error'].format(error=e)}", file=sys.stderr)
+            sys.exit(1)
+        return write_cards_as_csv(cards)
+
     if args.file is not None:
         if not Path(args.file).exists():
             print(f"\n❌ {s['console_file_not_found'].format(path=args.file)}", file=sys.stderr)
@@ -175,7 +204,18 @@ def build_parser() -> argparse.ArgumentParser:
         fromfile_prefix_chars="@",
     )
     p.add_argument("-f", "--file", default=None,
-                   help=f"Data file (CSV or TXT). Default: {DEFAULT_FILE} then {DEFAULT_THROUGHPUT_TXT}")
+                   help=f"Data file (CSV or TXT). Default: {DEFAULT_FILE} then {DEFAULT_THROUGHPUT_TXT}. "
+                        "Not used with --board.")
+    p.add_argument("--board", type=str, default=None,
+                   help="Fetch cards directly from the Kanban Zone API for this board's "
+                        "publicId, instead of a CSV export. Requires an API key (see "
+                        "--api-key). Not used with -f/--file.")
+    p.add_argument("--api-key", type=str, default=None,
+                   help=f"Kanban Zone API key, used with --board. Prefer setting the "
+                        f"{API_KEY_ENV_VAR} environment variable instead of this flag, so the "
+                        "key isn't stored in shell history or a config file.")
+    p.add_argument("--include-archived", action="store_true",
+                   help="With --board, also fetch archived cards (default: active cards only)")
     p.add_argument("-w", "--weeks", type=int, default=None,
                    help="Simulation duration in weeks (required, unless -e/--target-date is used)")
     p.add_argument("-e", "--target-date", type=str, default=None,
@@ -262,98 +302,106 @@ def main() -> None:
 
     window_start, window_end = resolve_window(args, parser)
     fpath = resolve_data_file(args, s)
-    start_date = resolve_start_date(args, s)
-    weeks, target_date = resolve_weeks(args, parser, start_date)
-
-    n_workdays  = weeks * 5 - args.days_off
-    if n_workdays <= 0:
-        print(f"❌ {s['console_zero_workdays']}", file=sys.stderr)
-        sys.exit(1)
-
-    # Load throughput
-    daily = load_throughput_auto(
-        fpath,
-        window_weeks=args.window,
-        window_start=window_start,
-        window_end=window_end,
+    source_label = (
+        s["console_board_source"].format(board=args.board) if args.board is not None else fpath
     )
-    if not daily:
-        print(f"❌ {s['console_could_not_load']}", file=sys.stderr)
-        sys.exit(1)
+    try:
+        start_date = resolve_start_date(args, s)
+        weeks, target_date = resolve_weeks(args, parser, start_date)
 
-    samples = weekly_samples(daily)
+        n_workdays  = weeks * 5 - args.days_off
+        if n_workdays <= 0:
+            print(f"❌ {s['console_zero_workdays']}", file=sys.stderr)
+            sys.exit(1)
 
-    # Summary
-    loader       = get_loader(fpath)
-    format_label = loader.FORMAT_NAME if loader else "?"
-    label_width  = 14
-    print(f"\n📋 {s['console_config_header']}")
-    print(f"   {s['param_file']:<{label_width}}: {fpath}  [{format_label}]")
-    print(f"   {s['console_sim_start']:<{label_width}}: {start_date} {s['console_monday_suffix']}")
-    duration_str = f"{weeks} {s['console_weeks_word']}"
-    if target_date is not None:
-        duration_str += f" ({s['console_until'].format(date=target_date)})"
-    print(f"   {s['param_duration']:<{label_width}}: {duration_str}")
-    print(f"   {s['param_holidays']:<{label_width}}: {args.days_off} {s['console_days_word']}")
-    print(f"   {s['param_workdays']:<{label_width}}: {n_workdays}")
-    unplanned_str = f"{args.unplanned_ratio:.0%}" if args.unplanned_ratio else s["none_val"]
-    print(f"   {s['param_unplanned']:<{label_width}}: {unplanned_str}")
-    if window_start is not None and window_end is not None:
-        history_window = s["window_range"].format(start=window_start, end=window_end)
-    elif args.window is None:
-        history_window = s["window_full"]
-    else:
-        history_window = f"{args.window} {s['console_weeks_word']}"
-    print(f"   {s['param_window']:<{label_width}}: {history_window}")
-    print(f"   {s['param_certainties']:<{label_width}}: {', '.join(str(c)+'%' for c in sorted(args.certainties))}")
-    mix = " + ".join(
-        f"{n}×{label}" for n, label in (
-            (args.tiny, s["size_tiny"]), (args.small, s["size_small"]),
-            (args.medium, s["size_medium"]), (args.large, s["size_large"]),
-            (args.xlarge, s["size_xlarge"]),
+        # Load throughput
+        daily = load_throughput_auto(
+            fpath,
+            window_weeks=args.window,
+            window_start=window_start,
+            window_end=window_end,
         )
-    )
-    if args.points:
-        mix += " + " + s["console_direct_pts"].format(n=args.points)
-    print(f"   {s['param_target']:<{label_width}}: {target_score:g} pts  ({mix})")
-    print(f"   {s['console_source_weeks_label']:<{label_width}}: "
-          f"{s['console_source_weeks'].format(n=len(daily), avg=np.mean(samples))}\n")
+        if not daily:
+            print(f"❌ {s['console_could_not_load']}", file=sys.stderr)
+            sys.exit(1)
 
-    # Run simulation
-    print(s["console_running"].format(n=args.simulations))
-    rng = np.random.default_rng()
-    weeks_arr, items_arr = simulate(
-        samples, target_score, n_workdays, args.simulations, rng, n_weeks=weeks,
-        unplanned_ratio=args.unplanned_ratio,
-    )
+        samples = weekly_samples(daily)
 
-    # Statistics
-    pct_ok = 100 * np.sum(weeks_arr <= weeks) / args.simulations
-    for p in sorted(args.certainties):
-        val = np.nanpercentile(weeks_arr, p)
-        print(f"   {s['console_certainty_line'].format(p=p, val=val)}")
-    print(f"\n   🎯 {s['console_probability'].format(n=weeks, pct=pct_ok)}\n")
+        # Summary
+        loader       = get_loader(fpath)
+        format_label = loader.FORMAT_NAME if loader else "?"
+        label_width  = 14
+        print(f"\n📋 {s['console_config_header']}")
+        print(f"   {s['param_file']:<{label_width}}: {source_label}  [{format_label}]")
+        print(f"   {s['console_sim_start']:<{label_width}}: {start_date} {s['console_monday_suffix']}")
+        duration_str = f"{weeks} {s['console_weeks_word']}"
+        if target_date is not None:
+            duration_str += f" ({s['console_until'].format(date=target_date)})"
+        print(f"   {s['param_duration']:<{label_width}}: {duration_str}")
+        print(f"   {s['param_holidays']:<{label_width}}: {args.days_off} {s['console_days_word']}")
+        print(f"   {s['param_workdays']:<{label_width}}: {n_workdays}")
+        unplanned_str = f"{args.unplanned_ratio:.0%}" if args.unplanned_ratio else s["none_val"]
+        print(f"   {s['param_unplanned']:<{label_width}}: {unplanned_str}")
+        if window_start is not None and window_end is not None:
+            history_window = s["window_range"].format(start=window_start, end=window_end)
+        elif args.window is None:
+            history_window = s["window_full"]
+        else:
+            history_window = f"{args.window} {s['console_weeks_word']}"
+        print(f"   {s['param_window']:<{label_width}}: {history_window}")
+        print(f"   {s['param_certainties']:<{label_width}}: {', '.join(str(c)+'%' for c in sorted(args.certainties))}")
+        mix = " + ".join(
+            f"{n}×{label}" for n, label in (
+                (args.tiny, s["size_tiny"]), (args.small, s["size_small"]),
+                (args.medium, s["size_medium"]), (args.large, s["size_large"]),
+                (args.xlarge, s["size_xlarge"]),
+            )
+        )
+        if args.points:
+            mix += " + " + s["console_direct_pts"].format(n=args.points)
+        print(f"   {s['param_target']:<{label_width}}: {target_score:g} pts  ({mix})")
+        print(f"   {s['console_source_weeks_label']:<{label_width}}: "
+              f"{s['console_source_weeks'].format(n=len(daily), avg=np.mean(samples))}\n")
 
-    # Annotations
-    annots = load_annotations(args.annotations)
-    if annots:
-        print(f"   📌 {s['console_annotations_loaded'].format(n=len(annots))}")
+        # Run simulation
+        print(s["console_running"].format(n=args.simulations))
+        rng = np.random.default_rng()
+        weeks_arr, items_arr = simulate(
+            samples, target_score, n_workdays, args.simulations, rng, n_weeks=weeks,
+            unplanned_ratio=args.unplanned_ratio,
+        )
 
-    # Charts
-    display_window = None if args.chart_weeks == 0 else args.chart_weeks
-    make_charts(
-        weeks_arr, items_arr, target_score, weeks,
-        args.window, window_start, window_end, n_workdays, fpath, sorted(args.certainties), annots,
-        display_window,
-        days_off=args.days_off,
-        target_date=target_date,
-        unplanned_ratio=args.unplanned_ratio,
-        tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
-        xlarge=args.xlarge, points=args.points,
-        annot_file=args.annotations,
-        n_simulations=args.simulations,
-        lang=args.lang,
-        output_dir=args.output_dir,
-        title=args.title,
-        description=args.description,
-    )
+        # Statistics
+        pct_ok = 100 * np.sum(weeks_arr <= weeks) / args.simulations
+        for p in sorted(args.certainties):
+            val = np.nanpercentile(weeks_arr, p)
+            print(f"   {s['console_certainty_line'].format(p=p, val=val)}")
+        print(f"\n   🎯 {s['console_probability'].format(n=weeks, pct=pct_ok)}\n")
+
+        # Annotations
+        annots = load_annotations(args.annotations)
+        if annots:
+            print(f"   📌 {s['console_annotations_loaded'].format(n=len(annots))}")
+
+        # Charts
+        display_window = None if args.chart_weeks == 0 else args.chart_weeks
+        make_charts(
+            weeks_arr, items_arr, target_score, weeks,
+            args.window, window_start, window_end, n_workdays, fpath, sorted(args.certainties), annots,
+            display_window,
+            days_off=args.days_off,
+            target_date=target_date,
+            unplanned_ratio=args.unplanned_ratio,
+            source_label=source_label,
+            tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
+            xlarge=args.xlarge, points=args.points,
+            annot_file=args.annotations,
+            n_simulations=args.simulations,
+            lang=args.lang,
+            output_dir=args.output_dir,
+            title=args.title,
+            description=args.description,
+        )
+    finally:
+        if args.board is not None:
+            Path(fpath).unlink(missing_ok=True)

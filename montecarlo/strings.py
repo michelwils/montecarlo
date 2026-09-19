@@ -79,6 +79,10 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "console_zero_workdays":      "Work day count is zero or negative.",
         "console_could_not_load":     "Could not load throughput data.",
         "console_chart_saved":        "Chart saved: {path}",
+        "console_file_and_board":     "-f/--file cannot be used with --board.",
+        "console_missing_api_key":    "--board requires an API key: use --api-key or set the {env_var} environment variable.",
+        "console_api_error":          "{error}",
+        "console_board_source":       "Kanban Zone API (board {board})",
     },
     "fr": {
         # Titre de la figure
@@ -152,5 +156,9 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "console_zero_workdays":      "Le nombre de jours ouvrables est nul ou négatif.",
         "console_could_not_load":     "Impossible de charger les données de débit.",
         "console_chart_saved":        "Graphique enregistré : {path}",
+        "console_file_and_board":     "-f/--file ne peut pas être utilisé avec --board.",
+        "console_missing_api_key":    "--board nécessite une clé API : utilisez --api-key ou définissez la variable d'environnement {env_var}.",
+        "console_api_error":          "{error}",
+        "console_board_source":       "API Kanban Zone (tableau {board})",
     },
 }
