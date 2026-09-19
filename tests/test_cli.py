@@ -1,12 +1,23 @@
 import io
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-from montecarlo.cli import _ensure_utf8_streams, build_parser, main
+from montecarlo.cli import (
+    _ensure_utf8_streams,
+    build_parser,
+    compute_target_score,
+    main,
+    resolve_data_file,
+    resolve_start_date,
+    resolve_window,
+)
+from montecarlo.strings import CHART_STRINGS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_KANBAN_CSV = str(REPO_ROOT / "exemples" / "kanban_zone.csv")
+EN = CHART_STRINGS["en"]
 
 
 class TestEnsureUtf8Streams:
@@ -59,6 +70,89 @@ class TestBuildParser:
         assert args.weeks == 8
         assert args.window_start == "2026-01-01"
         assert args.window_end == "2026-03-31"
+
+
+class TestComputeTargetScore:
+    def test_sums_weighted_items_and_direct_points(self):
+        args = build_parser().parse_args([
+            "-w", "1", "-t", "2", "-s", "1", "-m", "1", "-l", "1", "-x", "1", "-p", "3",
+        ])
+        # 2*0.5 + 1*1 + 1*3 + 1*5 + 1*8 + 3 direct = 21
+        assert compute_target_score(args) == 21.0
+
+    def test_zero_when_nothing_requested(self):
+        args = build_parser().parse_args(["-w", "1"])
+        assert compute_target_score(args) == 0.0
+
+
+class TestResolveWindow:
+    def test_returns_none_none_when_unset(self):
+        parser = build_parser()
+        assert resolve_window(parser.parse_args(["-w", "1"]), parser) == (None, None)
+
+    def test_parses_a_valid_range(self):
+        parser = build_parser()
+        args = parser.parse_args([
+            "-w", "1", "--window-start", "2026-01-01", "--window-end", "2026-01-31",
+        ])
+        assert resolve_window(args, parser) == (date(2026, 1, 1), date(2026, 1, 31))
+
+    def test_window_and_window_start_together_exits(self):
+        parser = build_parser()
+        args = parser.parse_args([
+            "-w", "1", "-W", "4",
+            "--window-start", "2026-01-01", "--window-end", "2026-01-31",
+        ])
+        with pytest.raises(SystemExit):
+            resolve_window(args, parser)
+
+    def test_start_without_end_exits(self):
+        parser = build_parser()
+        args = parser.parse_args(["-w", "1", "--window-start", "2026-01-01"])
+        with pytest.raises(SystemExit):
+            resolve_window(args, parser)
+
+    def test_invalid_date_format_exits(self):
+        parser = build_parser()
+        args = parser.parse_args([
+            "-w", "1", "--window-start", "nope", "--window-end", "2026-01-31",
+        ])
+        with pytest.raises(SystemExit):
+            resolve_window(args, parser)
+
+    def test_end_before_start_exits(self):
+        parser = build_parser()
+        args = parser.parse_args([
+            "-w", "1", "--window-start", "2026-02-01", "--window-end", "2026-01-01",
+        ])
+        with pytest.raises(SystemExit):
+            resolve_window(args, parser)
+
+
+class TestResolveDataFile:
+    def test_returns_explicit_file_when_it_exists(self):
+        args = build_parser().parse_args(["-w", "1", "-f", SAMPLE_KANBAN_CSV])
+        assert resolve_data_file(args, EN) == SAMPLE_KANBAN_CSV
+
+    def test_explicit_missing_file_exits(self):
+        args = build_parser().parse_args(["-w", "1", "-f", "does/not/exist.csv"])
+        with pytest.raises(SystemExit):
+            resolve_data_file(args, EN)
+
+
+class TestResolveStartDate:
+    def test_defaults_to_next_monday(self):
+        args = build_parser().parse_args(["-w", "1"])
+        assert resolve_start_date(args, EN).weekday() == 0
+
+    def test_parses_explicit_date(self):
+        args = build_parser().parse_args(["-w", "1", "-d", "2026-03-20"])
+        assert resolve_start_date(args, EN) == date(2026, 3, 20)
+
+    def test_invalid_date_exits(self):
+        args = build_parser().parse_args(["-w", "1", "-d", "not-a-date"])
+        with pytest.raises(SystemExit):
+            resolve_start_date(args, EN)
 
 
 class TestMainValidation:

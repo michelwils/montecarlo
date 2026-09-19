@@ -1,6 +1,7 @@
 """Command-line interface: argument parsing and the main entry point."""
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -34,6 +35,85 @@ def _ensure_utf8_streams() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass  # stream doesn't support reconfigure (e.g. captured in tests)
+
+
+def compute_target_score(args: argparse.Namespace) -> float:
+    """Total point target implied by the requested item mix."""
+    return (
+        args.tiny * SCORES["Très petit"]
+        + args.small * SCORES["Petit"]
+        + args.medium * SCORES["Moyen"]
+        + args.large * SCORES["Grand"]
+        + args.xlarge * SCORES["Très grand"]
+        + args.points
+    )
+
+
+def resolve_window(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> tuple[date | None, date | None]:
+    """
+    Validate --window vs. --window-start/--window-end and parse the
+    latter into dates. Calls parser.error() (which prints usage and
+    exits) on any invalid combination or format.
+    """
+    if (args.window_start is None) != (args.window_end is None):
+        parser.error("--window-start and --window-end must be used together")
+    if args.window is not None and args.window_start is not None:
+        parser.error("--window cannot be used with --window-start/--window-end")
+
+    window_start = parse_date(args.window_start) if args.window_start else None
+    window_end   = parse_date(args.window_end) if args.window_end else None
+    if args.window_start and window_start is None:
+        parser.error("Invalid --window-start date format; use YYYY-MM-DD")
+    if args.window_end and window_end is None:
+        parser.error("Invalid --window-end date format; use YYYY-MM-DD")
+    if window_start is not None and window_end is not None and window_end < window_start:
+        parser.error("--window-end must be on or after --window-start")
+
+    return window_start, window_end
+
+
+def resolve_data_file(args: argparse.Namespace, s: dict[str, str]) -> str:
+    """
+    Return the throughput file to use: the explicit -f/--file if given
+    (validated to exist), otherwise the first working default candidate.
+    Prints a translated error and exits (code 1) if none is usable.
+    """
+    if args.file is not None:
+        if not Path(args.file).exists():
+            print(f"\n❌ {s['console_file_not_found'].format(path=args.file)}", file=sys.stderr)
+            sys.exit(1)
+        return args.file
+
+    candidates = []
+    if Path(DEFAULT_FILE).exists():
+        candidates.append(DEFAULT_FILE)
+    if Path(DEFAULT_THROUGHPUT_TXT).exists():
+        candidates.append(DEFAULT_THROUGHPUT_TXT)
+    if not candidates:
+        print(
+            f"\n❌ {s['console_no_data_file'].format(a=DEFAULT_FILE, b=DEFAULT_THROUGHPUT_TXT)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    for candidate in candidates:
+        if load_throughput_auto(candidate, window_weeks=None):
+            return candidate
+    print(f"\n❌ {s['console_no_valid_data_file']}", file=sys.stderr)
+    sys.exit(1)
+
+
+def resolve_start_date(args: argparse.Namespace, s: dict[str, str]) -> date:
+    """Return the validated --start-date, or next Monday if omitted."""
+    if args.start_date is None:
+        return next_monday()
+    start_date = parse_date(args.start_date)
+    if start_date is None:
+        print(f"❌ {s['console_invalid_date']}", file=sys.stderr)
+        sys.exit(1)
+    return start_date
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -108,69 +188,14 @@ def main() -> None:
             print(f"  {loader.DESCRIPTION}\n")
         sys.exit(0)
 
-    # Target score
-    target_score = (
-        args.tiny * SCORES["Très petit"]
-        + args.small * SCORES["Petit"]
-        + args.medium * SCORES["Moyen"]
-        + args.large * SCORES["Grand"]
-        + args.xlarge * SCORES["Très grand"]
-        + args.points
-    )
-
+    target_score = compute_target_score(args)
     if target_score == 0 or args.weeks is None:
         parser.print_help()
         sys.exit(1)
 
-    if (args.window_start is None) != (args.window_end is None):
-        parser.error("--window-start and --window-end must be used together")
-    if args.window is not None and args.window_start is not None:
-        parser.error("--window cannot be used with --window-start/--window-end")
-
-    window_start = parse_date(args.window_start) if args.window_start else None
-    window_end   = parse_date(args.window_end) if args.window_end else None
-    if args.window_start and window_start is None:
-        parser.error("Invalid --window-start date format; use YYYY-MM-DD")
-    if args.window_end and window_end is None:
-        parser.error("Invalid --window-end date format; use YYYY-MM-DD")
-    if window_start is not None and window_end is not None and window_end < window_start:
-        parser.error("--window-end must be on or after --window-start")
-
-    # Resolve data file
-    if args.file is not None:
-        fpath = args.file
-        if not Path(fpath).exists():
-            print(f"\n❌ {s['console_file_not_found'].format(path=fpath)}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        candidates = []
-        if Path(DEFAULT_FILE).exists():
-            candidates.append(DEFAULT_FILE)
-        if Path(DEFAULT_THROUGHPUT_TXT).exists():
-            candidates.append(DEFAULT_THROUGHPUT_TXT)
-        if not candidates:
-            print(
-                f"\n❌ {s['console_no_data_file'].format(a=DEFAULT_FILE, b=DEFAULT_THROUGHPUT_TXT)}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        fpath = None
-        for candidate in candidates:
-            if load_throughput_auto(candidate, window_weeks=None):
-                fpath = candidate
-                break
-        if fpath is None:
-            print(f"\n❌ {s['console_no_valid_data_file']}", file=sys.stderr)
-            sys.exit(1)
-
-    # Simulation window
-    if args.start_date is not None:
-        start_date = parse_date(args.start_date)
-        if start_date is None:
-            print(f"❌ {s['console_invalid_date']}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        start_date = next_monday()
+    window_start, window_end = resolve_window(args, parser)
+    fpath = resolve_data_file(args, s)
+    start_date = resolve_start_date(args, s)
 
     n_workdays  = args.weeks * 5 - args.days_off
     if n_workdays <= 0:
