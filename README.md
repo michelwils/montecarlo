@@ -148,11 +148,14 @@ python monte_carlo.py -f my_export.csv -w 12 -l 2 -a my_annotations.csv
 
 ## Adding a new data format
 
-The architecture uses a loader registry. To add support for a new format (e.g. Jira, Azure DevOps, Linear…):
+The architecture uses a loader registry in `montecarlo/loaders.py`. To add support for a new format (e.g. Jira, Azure DevOps, Linear…):
 
-**1. Create a subclass of `ThroughputLoader`**
+**1. Create a subclass of `ThroughputLoader`** (in `montecarlo/loaders.py`, or your own module importing from it)
 
 ```python
+from montecarlo.dates import parse_date
+from montecarlo.loaders import ThroughputLoader
+
 class JiraCSVLoader(ThroughputLoader):
     FORMAT_NAME = "jira"
     DESCRIPTION = "Jira CSV export (columns 'Resolved' and 'Story Points')"
@@ -170,7 +173,13 @@ class JiraCSVLoader(ThroughputLoader):
         except Exception:
             return False
 
-    def load(self, filepath: str, window_weeks: int | None) -> dict[date, float]:
+    def load(
+        self,
+        filepath: str,
+        window_weeks: int | None,
+        window_start: date | None = None,
+        window_end: date | None = None,
+    ) -> dict[date, float]:
         daily: dict[date, float] = defaultdict(float)
         with open(filepath, newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
@@ -186,7 +195,8 @@ class JiraCSVLoader(ThroughputLoader):
                     continue
                 if d is not None:
                     daily[d] += pts
-        # ... weekly aggregation identical to KanbanZoneCSVLoader
+        # ... weekly aggregation + window filtering identical to KanbanZoneCSVLoader
+        # (including _fill_zero_weeks — see montecarlo/loaders.py)
 ```
 
 **2. Register the loader in `LOADERS`**
@@ -216,7 +226,17 @@ The position in `LOADERS` determines priority in case of ambiguity. Header-based
 ## Project structure
 
 ```
-monte_carlo.py          Main script
+monte_carlo.py          Entry point — python monte_carlo.py [options]
+montecarlo/              Implementation package
+    constants.py         Scoring, default paths, accepted date formats
+    strings.py            Chart text tables (en/fr) — CHART_STRINGS
+    dates.py              Date parsing helpers
+    loaders.py             Loader registry (ThroughputLoader, LOADERS) — see "Adding a new data format"
+    annotations.py         Annotations CSV loading
+    simulation.py           Core Monte Carlo simulation
+    theme.py                Chart colour palette
+    charts.py                Chart rendering (make_charts and its sub-charts)
+    cli.py                   Argument parsing and main()
 requirements.txt        Python dependencies
 README.md               This documentation
 .gitignore
