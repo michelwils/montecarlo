@@ -416,12 +416,20 @@ def simulate(
     n_weeks_window = n_weeks if n_weeks is not None else (n_workdays // 5)
     days_off_factor = n_workdays / (n_weeks_window * 5) if n_weeks_window > 0 else 1.0
 
+    # Hard ceiling on simulated weeks: if the historical sample is all
+    # zeros (e.g. a narrow history window that lands on a genuine
+    # zero-throughput week), totals never reach a positive target and
+    # `done` would never become all-True, looping forever. Simulations
+    # that hit this ceiling are marked as never delivering (NaN) rather
+    # than looping indefinitely.
+    MAX_SIM_WEEKS = 10_000
+
     totals         = np.zeros(n_sim)
     items_delivered = np.zeros(n_sim)
-    weeks_needed   = np.zeros(n_sim, dtype=int)
+    weeks_needed   = np.full(n_sim, np.nan)
     done           = np.zeros(n_sim, dtype=bool)
     week           = 0
-    while not done.all():
+    while not done.all() and week < MAX_SIM_WEEKS:
         draw = rng.choice(samples, size=n_sim, replace=True) * days_off_factor
         totals += draw
         week   += 1
@@ -431,7 +439,7 @@ def simulate(
         weeks_needed[newly_done] = week
         done |= newly_done
 
-    return weeks_needed.astype(float), items_delivered
+    return weeks_needed, items_delivered
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +604,8 @@ def make_charts(
 
     # --- Chart 1: Distribution of weeks required ---
     style_ax(ax1)
-    max_w = max(weeks_arr.max(), n_weeks + 1.5)
+    finite_weeks = weeks_arr[np.isfinite(weeks_arr)]
+    max_w = max(finite_weeks.max() if finite_weeks.size else 0, n_weeks + 1.5)
     bins = np.arange(0, max_w + 0.5, 0.5)
     _, bin_edges, patches = ax1.hist(weeks_arr, bins=bins,
                                      edgecolor=BG_AX, linewidth=0.5)
@@ -609,7 +618,7 @@ def make_charts(
         else:
             patch.set_facecolor(cmap(norm(i)))
     for i, p in enumerate(certainties):
-        val = np.percentile(weeks_arr, p)
+        val = np.nanpercentile(weeks_arr, p)
         col = CERT_COLORS[i % len(CERT_COLORS)]
         ax1.axvline(val, color=col, linewidth=1.8, linestyle="--", alpha=0.90)
         ax1.text(val + 0.05, ax1.get_ylim()[1] * (0.95 - i * 0.12),
