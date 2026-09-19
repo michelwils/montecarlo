@@ -243,10 +243,16 @@ def _draw_sensitivity_chart(
                           unplanned_ratio=unplanned_ratio)
         probs.append(100 * np.sum(wk <= n_weeks) / 2000)
 
-    x_labels = [s["all_label"] if w is None else str(w) for w in window_range]
+    # Each window size w means "use the last w weeks of history ending on
+    # max_date", so its corresponding x-axis label is the Monday that
+    # window starts on — more informative than a bare week count.
+    max_date = max(all_daily.keys())
+    x_labels = [
+        s["all_label"] if w is None else str(max_date - timedelta(weeks=w - 1))
+        for w in window_range
+    ]
     x_pos    = list(range(len(window_range)))
 
-    max_date = max(all_daily.keys())
     bar_x, bar_h = [], []
     for monday, tp in all_daily.items():
         weeks_from_end = round((max_date - monday).days / 7) + 1
@@ -293,7 +299,7 @@ def _draw_sensitivity_chart(
     # Falls back to "All" if window_weeks exceeds display_weeks (-w > -G).
     if window_weeks is not None and window_weeks in window_range:
         active_idx = window_range.index(window_weeks)
-        label_txt  = s["active_marker"].format(n=window_weeks)
+        label_txt  = s["active_marker"].format(n=max_date - timedelta(weeks=window_weeks - 1))
     else:
         active_idx = window_range.index(None)
         label_txt  = s["active_marker_all"]

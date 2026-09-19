@@ -51,11 +51,11 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "ax2_target":        "Target\n{target:g} pts",
         # Chart 3 — sensitivity
         "ax3_title":         "Sensitivity to history window\n(deliver {target:g} pts in {n_weeks} w.)",
-        "ax3_xlabel":        "History window (weeks) — left: full history, right: recent only",
+        "ax3_xlabel":        "History window start date — left: full history, right: recent only",
         "ax3_ylabel":        "Probability of delivering target (%)",
         "ax3_bar_ylabel":    "Throughput (pts / week)",
         "all_label":         "All",
-        "active_marker":     "↑ {n}w",
+        "active_marker":     "↑ {n}",
         "active_marker_all": "↑ All",
         "no_data":           "Insufficient data",
         # Console messages
@@ -135,11 +135,11 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "ax2_target":        "Cible\n{target:g} pts",
         # Graphique 3 — sensibilité
         "ax3_title":         "Sensibilité à la fenêtre d'historique\n(livrer {target:g} pts en {n_weeks} sem.)",
-        "ax3_xlabel":        "Fenêtre d'historique (semaines) — gauche : tout l'historique, droite : récent seulement",
+        "ax3_xlabel":        "Date de début de la fenêtre d'historique — gauche : tout l'historique, droite : récent seulement",
         "ax3_ylabel":        "Probabilité de livrer la cible (%)",
         "ax3_bar_ylabel":    "Throughput (pts / semaine)",
         "all_label":         "Tout",
-        "active_marker":     "↑ {n}s",
+        "active_marker":     "↑ {n}",
         "active_marker_all": "↑ Tout",
         "no_data":           "Données insuffisantes",
         # Messages console
