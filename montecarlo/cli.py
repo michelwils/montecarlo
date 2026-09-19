@@ -1,5 +1,6 @@
 """Command-line interface: argument parsing and the main entry point."""
 import argparse
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -140,11 +141,38 @@ def resolve_start_date(args: argparse.Namespace, s: dict[str, str]) -> date:
     return start_date
 
 
+# Matches one config-line token: a "..."/'...' quoted run (for values
+# with spaces, e.g. a chart subtitle) or a run of non-space characters.
+# Unlike shlex, backslashes are not treated as escapes, since these
+# lines commonly hold Windows-style file paths (C:\Users\...).
+_CONFIG_TOKEN_RE = re.compile(r'"([^"]*)"|\'([^\']*)\'|(\S+)')
+
+
+class _ConfigArgumentParser(argparse.ArgumentParser):
+    """
+    ArgumentParser that also reads options from an @file (via the
+    built-in fromfile_prefix_chars mechanism), one "flag [value...]"
+    per line — e.g. "-m 5" or "--lang fr" — rather than argparse's
+    default of one bare token per line. Blank lines and lines starting
+    with '#' are ignored. See exemples/run.conf.
+    """
+
+    def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
+        line = arg_line.strip()
+        if not line or line.startswith("#"):
+            return []
+        return [dbl or sgl or bare for dbl, sgl, bare in _CONFIG_TOKEN_RE.findall(line)]
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
+    p = _ConfigArgumentParser(
         description="Monte Carlo simulation for software delivery forecasting.",
-        epilog="Dependencies: pip install -r requirements.txt",
+        epilog="Dependencies: pip install -r requirements.txt\n"
+               "Save frequently-used options in a file and reuse them with "
+               "'@path/to/file' (see exemples/run.conf); combine with more "
+               "flags on the command line to override just those.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        fromfile_prefix_chars="@",
     )
     p.add_argument("-f", "--file", default=None,
                    help=f"Data file (CSV or TXT). Default: {DEFAULT_FILE} then {DEFAULT_THROUGHPUT_TXT}")

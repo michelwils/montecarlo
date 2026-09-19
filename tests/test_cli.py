@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from montecarlo.cli import (
+    _ConfigArgumentParser,
     _ensure_utf8_streams,
     build_parser,
     compute_target_score,
@@ -71,6 +72,72 @@ class TestBuildParser:
         assert args.weeks == 8
         assert args.window_start == "2026-01-01"
         assert args.window_end == "2026-03-31"
+
+
+class TestConfigArgumentParser:
+    def setup_method(self):
+        self.parser = build_parser()
+        assert isinstance(self.parser, _ConfigArgumentParser)
+
+    def test_blank_and_comment_lines_are_ignored(self):
+        assert self.parser.convert_arg_line_to_args("") == []
+        assert self.parser.convert_arg_line_to_args("   ") == []
+        assert self.parser.convert_arg_line_to_args("# a comment") == []
+
+    def test_flag_and_value_on_one_line(self):
+        assert self.parser.convert_arg_line_to_args("-m 5") == ["-m", "5"]
+        assert self.parser.convert_arg_line_to_args("--lang fr") == ["--lang", "fr"]
+
+    def test_bare_flag_with_no_value(self):
+        assert self.parser.convert_arg_line_to_args("--formats") == ["--formats"]
+
+    def test_multi_value_option_splits_into_separate_tokens(self):
+        assert self.parser.convert_arg_line_to_args("-c 80 90 95") == ["-c", "80", "90", "95"]
+
+    def test_quoted_value_with_spaces_stays_one_token(self):
+        assert self.parser.convert_arg_line_to_args(
+            '-D "My subtitle here"'
+        ) == ["-D", "My subtitle here"]
+
+    def test_windows_backslash_path_is_preserved(self):
+        # Regression guard: shlex.split() would treat backslashes as
+        # escape characters and mangle a pasted Windows path (e.g.
+        # "C:\Users\x\file.csv" -> "C:Usersxfile.csv"). This parser
+        # must not do that.
+        line = r"-f C:\Users\test\data\kanban_zone.csv"
+        assert self.parser.convert_arg_line_to_args(line) == [
+            "-f", r"C:\Users\test\data\kanban_zone.csv",
+        ]
+
+    def test_path_with_spaces_must_be_quoted(self):
+        # A path with spaces splits into multiple tokens if unquoted —
+        # same rule as a shell command line. Quoting keeps it together.
+        unquoted = self.parser.convert_arg_line_to_args(
+            r"-f C:\OneDrive - Team\data.csv"
+        )
+        assert unquoted != ["-f", r"C:\OneDrive - Team\data.csv"]
+
+        quoted = self.parser.convert_arg_line_to_args(
+            '-f "C:\\OneDrive - Team\\data.csv"'
+        )
+        assert quoted == ["-f", r"C:\OneDrive - Team\data.csv"]
+
+    def test_reads_options_from_an_at_file(self, tmp_path):
+        config = tmp_path / "run.conf"
+        config.write_text(
+            "# a comment\n\n-m 5\n-l 2\n--lang fr\n", encoding="utf-8",
+        )
+        args = self.parser.parse_args([f"@{config}", "-w", "8"])
+        assert args.medium == 5
+        assert args.large == 2
+        assert args.lang == "fr"
+        assert args.weeks == 8
+
+    def test_command_line_overrides_config_file_value(self, tmp_path):
+        config = tmp_path / "run.conf"
+        config.write_text("-m 5\n-w 4\n", encoding="utf-8")
+        args = self.parser.parse_args([f"@{config}", "-w", "9"])
+        assert args.weeks == 9  # the later, explicit -w wins
 
 
 class TestComputeTargetScore:
@@ -287,6 +354,25 @@ class TestMainEndToEnd:
             "-s", "5", "-m", "3", "-w", "10",
             "-n", "200",  # keep the test fast
             "-o", str(tmp_path),
+        ])
+        main()
+        out = capsys.readouterr().out
+        assert "Probability of delivering" in out
+        assert len(list(tmp_path.glob("*.png"))) == 1
+
+    def test_runs_from_an_at_config_file(self, tmp_path, monkeypatch, capsys):
+        config = tmp_path / "run.conf"
+        # Quoted because SAMPLE_KANBAN_CSV (an absolute repo path) may
+        # itself contain spaces, same as any unquoted value with spaces.
+        config.write_text(
+            f'-f "{SAMPLE_KANBAN_CSV}"\n'
+            "-m 3\n"
+            "-w 10\n"
+            "-n 200\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", f"@{config}", "-o", str(tmp_path),
         ])
         main()
         out = capsys.readouterr().out

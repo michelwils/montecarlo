@@ -96,6 +96,22 @@ Both columns are accepted wherever an item size is read from a data file (`CF En
 
 ---
 
+## Reusing options with a config file
+
+If you run forecasts for the same scope repeatedly — updating only the data file and the time remaining — save the recurring flags in a file and reuse it:
+
+```bash
+python monte_carlo.py @data/run.conf
+```
+
+One flag per line (`-m 5`, `--lang fr`, …), same names as `--help`. Blank lines and lines starting with `#` are ignored. Values with spaces need quotes, same as on a command line — this includes a file path that lives under a folder with spaces (e.g. a OneDrive path: `-f "C:\OneDrive - Company\data\kanban_zone.csv"`); unlike a real command line, backslashes in paths are kept as-is.
+
+Add more flags after `@data/run.conf` on the command line to override just those for one run (e.g. `python monte_carlo.py @data/run.conf -w 4`).
+
+**Example file:** `exemples/run.conf` — copy it to `data/run.conf` (gitignored) as a starting point for your own team. Pairing it with `-e/--target-date` means the file rarely needs editing: only the scope (`-t/-s/-m/-l/-x/-p`) and the deadline change as the plan evolves, and "weeks remaining" is recalculated automatically from today every time you run it.
+
+---
+
 ## Supported data formats
 
 ### Kanban Zone CSV
@@ -240,6 +256,7 @@ The position in `LOADERS` determines priority in case of ambiguity. Header-based
 | `exemples/kanban_zone.csv`  | Kanban Zone  | `-f exemples/kanban_zone.csv` |
 | `exemples/throughput.txt`   | Plain text   | `-f exemples/throughput.txt` |
 | `exemples/annotations.csv`  | Annotations  | `-a exemples/annotations.csv` |
+| `exemples/run.conf`         | Config file  | `@exemples/run.conf` |
 
 ---
 
@@ -267,9 +284,11 @@ data/                   Input data (gitignored — place your files here)
     kanban_zone.csv
     annotations.csv
     Throughput.txt
+    run.conf              Your own reusable options (see "Reusing options with a config file")
 output/                 Generated charts (gitignored)
 exemples/               Committed sample files
     kanban_zone.csv
     throughput.txt
     annotations.csv
+    run.conf
 ```
