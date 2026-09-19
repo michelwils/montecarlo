@@ -393,7 +393,15 @@ def make_charts(
     if large:  mix_parts.append(f"{large} × {s['size_large']}")
     if xlarge: mix_parts.append(f"{xlarge} × {s['size_xlarge']}")
     if points: mix_parts.append(f"{points} pts")
-    mix_str = ("\n+ ".join(mix_parts)) if mix_parts else "—"
+    if not mix_parts:
+        mix_str = "—"
+    elif len(mix_parts) == 1:
+        mix_str = mix_parts[0]
+    else:
+        # Pad the first line with 2 spaces — the same width as the "+ "
+        # prefix on every following line — so item counts/labels line up
+        # instead of the first one sitting flush left of the rest.
+        mix_str = "  " + mix_parts[0] + "".join(f"\n+ {p}" for p in mix_parts[1:])
 
     loader     = get_loader(filepath)
     format_str = loader.FORMAT_NAME if loader else Path(filepath).suffix.lstrip(".")
