@@ -78,6 +78,16 @@ def _fill_zero_weeks(
     return filled
 
 
+def _apply_window_weeks(
+    weekly: dict[date, float], window_weeks: int | None
+) -> dict[date, float]:
+    """Keep only the most recent `window_weeks` weeks, if set."""
+    if window_weeks is None:
+        return weekly
+    cutoff = max(weekly.keys()) - timedelta(weeks=window_weeks - 1)
+    return {k: v for k, v in weekly.items() if k >= cutoff}
+
+
 class KanbanZoneCSVLoader(ThroughputLoader):
     """
     Loader for Kanban Zone CSV exports.
@@ -137,10 +147,7 @@ class KanbanZoneCSVLoader(ThroughputLoader):
             weekly[monday] += v
 
         weekly = _fill_zero_weeks(weekly, start=window_start, end=window_end)
-
-        if window_weeks is not None:
-            cutoff = max(weekly.keys()) - timedelta(weeks=window_weeks - 1)
-            weekly = {k: v for k, v in weekly.items() if k >= cutoff}
+        weekly = _apply_window_weeks(weekly, window_weeks)
 
         return dict(weekly)
 
@@ -183,10 +190,7 @@ class TxtLoader(ThroughputLoader):
                 if (window_start is None or monday >= window_start)
                 and (window_end is None or monday <= window_end)
             }
-        if window_weeks is not None:
-            cutoff = max(weekly.keys()) - timedelta(weeks=window_weeks - 1)
-            weekly = {k: v for k, v in weekly.items() if k >= cutoff}
-        return weekly
+        return _apply_window_weeks(weekly, window_weeks)
 
 
 # Loader registry — order matters: first match() wins.
