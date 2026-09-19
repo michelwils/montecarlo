@@ -86,6 +86,14 @@ class TestBuildParser:
         assert args.configs == ["a.conf", "b.conf"]
         assert args.lang == "fr"
 
+    def test_uniform_size_defaults_to_none(self):
+        args = build_parser().parse_args([])
+        assert args.uniform_size is None
+
+    def test_uniform_size_parses_as_float(self):
+        args = build_parser().parse_args(["-U", "1"])
+        assert args.uniform_size == 1.0
+
 
 class TestConfigArgumentParser:
     def setup_method(self):
@@ -550,6 +558,31 @@ class TestMainEndToEnd:
         main()
         out = capsys.readouterr().out
         assert "Probability of delivering" in out
+        assert len(list(tmp_path.glob("*.png"))) == 1
+
+    def test_uniform_size_counts_every_card_equally_on_a_board_with_no_size_field(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        no_size_csv = tmp_path / "no_size.csv"
+        no_size_csv.write_text(
+            "Done At,Card Title\n"
+            "01-05-2026 09:00,Task A\n"
+            "01-06-2026 09:00,Task B\n"
+            "01-12-2026 09:00,Task C\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "-f", str(no_size_csv),
+            "-U", "1", "-m", "2", "-w", "4",
+            "-n", "200",
+            "-o", str(tmp_path),
+        ])
+        main()
+        out = capsys.readouterr().out
+        label_width = 14  # must match montecarlo.cli's console label column width
+        assert f"{EN['param_uniform_size']:<{label_width}}: 1 pts" in out
+        assert "[kanban_zone]" in out
         assert len(list(tmp_path.glob("*.png"))) == 1
 
     def test_target_date_derives_weeks_and_shows_in_summary(self, tmp_path, monkeypatch, capsys):

@@ -36,6 +36,7 @@ def _draw_params_panel(
     *,
     source_str: str,
     format_str: str,
+    uniform_size_str: str,
     target_score: float,
     mix_str: str,
     duration_str: str,
@@ -57,6 +58,7 @@ def _draw_params_panel(
     params = [
         (s["param_source"],      source_str),
         (s["param_format"],      format_str),
+        (s["param_uniform_size"], uniform_size_str),
         (s["param_target"],      f"{target_score:g} pts"),
         (s["param_mix"],         mix_str),
         (s["param_duration"],    duration_str),
@@ -200,12 +202,14 @@ def _draw_sensitivity_chart(
     certainties: list[int],
     annotations: dict[date, list[str]],
     unplanned_ratio: float = 0.0,
+    uniform_size: float | None = None,
 ) -> None:
     """Chart 3: probability of delivering vs. history window used."""
     _style_axis(ax3)
 
     all_daily = load_throughput_auto(
-        filepath, window_weeks=None, window_start=window_start, window_end=window_end
+        filepath, window_weeks=None, window_start=window_start, window_end=window_end,
+        uniform_size=uniform_size,
     )
     if not all_daily:
         ax3.text(0.5, 0.5, s["no_data"], ha="center", va="center",
@@ -227,7 +231,8 @@ def _draw_sensitivity_chart(
     rng_chart = np.random.default_rng(42)
     for w in window_range:
         d = load_throughput_auto(
-            filepath, window_weeks=w, window_start=window_start, window_end=window_end
+            filepath, window_weeks=w, window_start=window_start, window_end=window_end,
+            uniform_size=uniform_size,
         )
         if not d:
             probs.append(0.0)
@@ -336,6 +341,7 @@ def make_charts(
     days_off: int = 0,
     target_date: date | None = None,
     unplanned_ratio: float = 0.0,
+    uniform_size: float | None = None,
     source_label: str | None = None,
     tiny: int = 0,
     small: int = 0,
@@ -417,6 +423,7 @@ def make_charts(
     certainties_str = ", ".join(f"{c}%" for c in certainties)
     days_off_str    = f"{days_off} {s['days_abbr']}" if days_off else s["none_val"]
     unplanned_str   = f"{unplanned_ratio:.0%}" if unplanned_ratio else s["none_val"]
+    uniform_size_str = f"{uniform_size:g} pts" if uniform_size is not None else s["none_val"]
     annot_str       = Path(annot_file).name if annot_file else s["none_val"]
     duration_str    = f"{n_weeks} {s['weeks_abbr']}"
     if target_date is not None:
@@ -426,7 +433,8 @@ def make_charts(
 
     _draw_params_panel(
         ax_params, s,
-        source_str=source_str, format_str=format_str, target_score=target_score,
+        source_str=source_str, format_str=format_str, uniform_size_str=uniform_size_str,
+        target_score=target_score,
         mix_str=mix_str, duration_str=duration_str, n_workdays=n_workdays,
         days_off_str=days_off_str, unplanned_str=unplanned_str,
         fenetre_str=fenetre_str, display_str=display_str,
@@ -450,7 +458,7 @@ def make_charts(
         window_start=window_start, window_end=window_end,
         target_score=target_score, n_workdays=n_workdays, n_weeks=n_weeks,
         display_window=display_window, certainties=certainties, annotations=annotations,
-        unplanned_ratio=unplanned_ratio,
+        unplanned_ratio=unplanned_ratio, uniform_size=uniform_size,
     )
 
     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -13,6 +13,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         # Parameters panel labels
         "param_source":      "Source",
         "param_format":      "Format",
+        "param_uniform_size": "Card value",
         "param_target":      "Target",
         "param_mix":         "Mix",
         "param_duration":    "Duration",
@@ -90,6 +91,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         # Étiquettes du panneau de paramètres
         "param_source":      "Source",
         "param_format":      "Format",
+        "param_uniform_size": "Valeur/carte",
         "param_target":      "Cible",
         "param_mix":         "Mix",
         "param_duration":    "Durée",

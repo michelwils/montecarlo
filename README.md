@@ -61,6 +61,7 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 |      | `--board`         | none          | Fetch cards from this Kanban Zone board's publicId instead of a file (see below) |
 |      | `--api-key`       | none          | API key for `--board` (prefer the `KANBAN_ZONE_API_KEY` env var) |
 |      | `--include-archived` | off        | With `--board`, also fetch archived cards |
+| `-U` | `--uniform-size`  | none          | Count every completed card as this many points instead of reading `CF Size`/`CF Envergure` — for boards with no size field (see below) |
 | `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks (or use `-e`) |
 | `-e` | `--target-date`   | none          | Target delivery date (`YYYY-MM-DD`) instead of `-w`; weeks = ceil((target − start) / 7 days) |
 | `-W` | `--window`        | all           | Most recent N history weeks to use |
@@ -149,6 +150,16 @@ If an optional `CF Exception` (or `CF Prioritaire`) column is present, cards fla
 ```bash
 python monte_carlo.py -f exemples/kanban_zone.csv -w 12 -l 3 -m 4
 ```
+
+#### Boards with no size field
+
+Some boards don't categorize cards by size at all — every completed card is worth the same. Use `-U/--uniform-size` to count every completed card as a fixed number of points, ignoring `CF Size`/`CF Envergure` entirely:
+
+```bash
+python monte_carlo.py -f data/no_size_board.csv -U 1 -p 20 -w 8
+```
+
+This also forces detection of the file as a Kanban Zone export even though it has no size column, since `Done At` alone is otherwise not a reliable enough signal.
 
 ---
 

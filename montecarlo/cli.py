@@ -153,7 +153,7 @@ def resolve_data_file(args: argparse.Namespace, s: dict[str, str]) -> str:
         sys.exit(1)
 
     for candidate in candidates:
-        if load_throughput_auto(candidate, window_weeks=None):
+        if load_throughput_auto(candidate, window_weeks=None, uniform_size=args.uniform_size):
             return candidate
     print(f"\n❌ {s['console_no_valid_data_file']}", file=sys.stderr)
     sys.exit(1)
@@ -216,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "key isn't stored in shell history or a config file.")
     p.add_argument("--include-archived", action="store_true",
                    help="With --board, also fetch archived cards (default: active cards only)")
+    p.add_argument("-U", "--uniform-size", type=float, default=None,
+                   metavar="POINTS",
+                   help="Count every completed card as worth this many points, ignoring "
+                        "CF Size/CF Envergure entirely — for a Kanban Zone CSV/API source "
+                        "with no size field, where every card is treated as equivalent.")
     p.add_argument("-w", "--weeks", type=int, default=None,
                    help="Simulation duration in weeks (required, unless -e/--target-date is used)")
     p.add_argument("-e", "--target-date", type=str, default=None,
@@ -316,6 +321,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             window_weeks=args.window,
             window_start=window_start,
             window_end=window_end,
+            uniform_size=args.uniform_size,
         )
         if not daily:
             print(f"❌ {s['console_could_not_load']}", file=sys.stderr)
@@ -324,11 +330,21 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         samples = weekly_samples(daily)
 
         # Summary
-        loader       = get_loader(fpath)
-        format_label = loader.FORMAT_NAME if loader else "?"
+        loader = get_loader(fpath)
+        if loader is not None:
+            format_label = loader.FORMAT_NAME
+        elif args.uniform_size is not None:
+            # load_throughput_auto() force-selected KanbanZoneCSVLoader in
+            # this case even though get_loader()'s own header-based
+            # detection doesn't recognize this file (no size column).
+            format_label = "kanban_zone"
+        else:
+            format_label = "?"
         label_width  = 14
         print(f"\n📋 {s['console_config_header']}")
         print(f"   {s['param_source']:<{label_width}}: {source_label}  [{format_label}]")
+        uniform_size_str = f"{args.uniform_size:g} pts" if args.uniform_size is not None else s["none_val"]
+        print(f"   {s['param_uniform_size']:<{label_width}}: {uniform_size_str}")
         print(f"   {s['console_sim_start']:<{label_width}}: {start_date} {s['console_monday_suffix']}")
         duration_str = f"{weeks} {s['console_weeks_word']}"
         if target_date is not None:
@@ -388,6 +404,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             days_off=args.days_off,
             target_date=target_date,
             unplanned_ratio=args.unplanned_ratio,
+            uniform_size=args.uniform_size,
             source_label=source_label,
             tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
             xlarge=args.xlarge, points=args.points,

@@ -236,6 +236,35 @@ class TestKanbanZoneCSVLoader:
         weekly = KanbanZoneCSVLoader().load(str(path), window_weeks=None)
         assert weekly == {date(2026, 3, 16): 5.0}
 
+    def test_uniform_size_counts_cards_with_no_size_column(self, tmp_path):
+        # A board with no size field at all: every card counts as
+        # uniform_size points instead of being skipped.
+        path = tmp_path / "kanban_zone.csv"
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csvmod.writer(f)
+            writer.writerow(["Done At", "Card Title"])
+            writer.writerow(["03-16-2026 09:00", "Task A"])
+            writer.writerow(["03-16-2026 10:00", "Task B"])
+        weekly = KanbanZoneCSVLoader().load(str(path), window_weeks=None, uniform_size=1.0)
+        assert weekly == {date(2026, 3, 16): 2.0}
+
+    def test_uniform_size_overrides_a_present_size_column(self, kanban_csv):
+        # Explicit uniform_size takes precedence even if a size field
+        # does exist and would otherwise be readable.
+        path = kanban_csv([("03-16-2026 09:00", "Grand")])
+        weekly = KanbanZoneCSVLoader().load(path, window_weeks=None, uniform_size=2.0)
+        assert weekly == {date(2026, 3, 16): 2.0}
+
+    def test_uniform_size_still_excludes_unplanned_cards(self, tmp_path):
+        path = tmp_path / "kanban_zone.csv"
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csvmod.writer(f)
+            writer.writerow(["Done At", "CF Exception"])
+            writer.writerow(["03-16-2026 09:00", ""])
+            writer.writerow(["03-16-2026 10:00", "true"])
+        weekly = KanbanZoneCSVLoader().load(str(path), window_weeks=None, uniform_size=1.0)
+        assert weekly == {date(2026, 3, 16): 1.0}
+
 
 class TestGetField:
     def test_returns_first_non_empty_value(self):
@@ -317,3 +346,15 @@ class TestLoaderRegistry:
         weekly = load_throughput_auto(str(path), window_weeks=None)
         assert weekly == {}
         assert "Unsupported format" in capsys.readouterr().err
+
+    def test_uniform_size_forces_kanban_zone_loader_without_a_size_column(self, tmp_path):
+        # get_loader()'s own header-based match() would reject this file
+        # (no CF Size/CF Envergure column), but uniform_size means the
+        # caller already knows it's a Kanban Zone source.
+        path = tmp_path / "no_size.csv"
+        path.write_text(
+            "Done At,Card Title\n03-16-2026 09:00,Task A\n", encoding="utf-8",
+        )
+        assert get_loader(str(path)) is None  # confirms normal detection fails
+        weekly = load_throughput_auto(str(path), window_weeks=None, uniform_size=1.0)
+        assert weekly == {date(2026, 3, 16): 1.0}

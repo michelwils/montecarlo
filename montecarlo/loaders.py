@@ -39,6 +39,7 @@ class ThroughputLoader:
         window_weeks: int | None,
         window_start: date | None = None,
         window_end: date | None = None,
+        uniform_size: float | None = None,
     ) -> dict[date, float]:
         """
         Load throughput from filepath.
@@ -46,6 +47,9 @@ class ThroughputLoader:
         When window_weeks is set, only the last N weeks are kept.
         When window_start and window_end are set, only dates in that
         inclusive range are kept.
+        uniform_size, where applicable, counts every completed item as
+        this many points instead of reading a size field (for boards
+        with no size categorization at all — see KanbanZoneCSVLoader).
         """
         raise NotImplementedError
 
@@ -120,8 +124,10 @@ class KanbanZoneCSVLoader(ThroughputLoader):
     """
     Loader for Kanban Zone CSV exports.
     Required columns: 'Done At' and a size field ('CF Size' or
-    'CF Envergure'). Header inspection is used for detection to avoid
-    ambiguity with other CSV formats (Jira, Linear, etc.).
+    'CF Envergure') — unless the caller passes uniform_size to load(),
+    for boards with no size categorization at all. Header inspection is
+    used for detection to avoid ambiguity with other CSV formats (Jira,
+    Linear, etc.).
 
     If an optional 'CF Exception'/'CF Prioritaire' column is present,
     cards flagged true are excluded from throughput — see _is_unplanned().
@@ -151,15 +157,22 @@ class KanbanZoneCSVLoader(ThroughputLoader):
         window_weeks: int | None,
         window_start: date | None = None,
         window_end: date | None = None,
+        uniform_size: float | None = None,
     ) -> dict[date, float]:
         daily: dict[date, float] = defaultdict(float)
         with open(filepath, newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                done_raw  = row.get("Done At", "").strip()
-                envergure = _get_field(row, _SIZE_COLUMNS)
-                if not done_raw or envergure not in ALL_SCORES:
+                done_raw = row.get("Done At", "").strip()
+                if not done_raw:
                     continue
+                if uniform_size is not None:
+                    points = uniform_size
+                else:
+                    envergure = _get_field(row, _SIZE_COLUMNS)
+                    if envergure not in ALL_SCORES:
+                        continue
+                    points = ALL_SCORES[envergure]
                 d = parse_date(done_raw)
                 if d is None:
                     continue
@@ -169,7 +182,7 @@ class KanbanZoneCSVLoader(ThroughputLoader):
                     continue
                 if _is_unplanned(row):
                     continue
-                daily[d] += ALL_SCORES[envergure]
+                daily[d] += points
 
         if not daily:
             print("⚠️  No throughput data found.", file=sys.stderr)
@@ -204,6 +217,7 @@ class TxtLoader(ThroughputLoader):
         window_weeks: int | None,
         window_start: date | None = None,
         window_end: date | None = None,
+        uniform_size: float | None = None,  # not applicable: values are pre-aggregated
     ) -> dict[date, float]:
         with open(filepath, encoding="utf-8-sig") as f:
             raw = f.read()
@@ -249,12 +263,20 @@ def load_throughput_auto(
     window_weeks: int | None,
     window_start: date | None = None,
     window_end: date | None = None,
+    uniform_size: float | None = None,
 ) -> dict[date, float]:
     """
     Unified entry point: auto-detect the format and load throughput.
     Prints a warning if no loader matches.
+
+    uniform_size forces the Kanban Zone CSV loader regardless of
+    header-based detection: a board with no size custom field at all
+    won't match KanbanZoneCSVLoader.match() (which requires one), but
+    the caller has explicitly said every item should count as a fixed
+    number of points, which only that loader's 'Done At'/CF Exception
+    handling makes sense for.
     """
-    loader = get_loader(filepath)
+    loader = KanbanZoneCSVLoader() if uniform_size is not None else get_loader(filepath)
     if loader is None:
         ext = Path(filepath).suffix.lower()
         supported = sorted({e for ldr in LOADERS for e in ldr.EXTENSIONS})
@@ -264,4 +286,4 @@ def load_throughput_auto(
             file=sys.stderr,
         )
         return {}
-    return loader.load(filepath, window_weeks, window_start, window_end)
+    return loader.load(filepath, window_weeks, window_start, window_end, uniform_size)
