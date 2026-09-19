@@ -21,6 +21,21 @@ from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
 
 
+def _ensure_utf8_streams() -> None:
+    """
+    Force stdout/stderr to UTF-8 so the emoji used in status messages
+    (📋 🔄 🎯 ⚠️ ✅) never raise UnicodeEncodeError on a legacy console
+    codepage (e.g. cp1252 on Windows) or when output is redirected.
+    `errors="replace"` is a last-resort safety net in case reconfiguring
+    the encoding itself isn't enough to make some character encodable.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass  # stream doesn't support reconfigure (e.g. captured in tests)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Monte Carlo simulation for software delivery forecasting.",
@@ -78,6 +93,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    _ensure_utf8_streams()
+
     parser = build_parser()
     args = parser.parse_args()
 

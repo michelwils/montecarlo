@@ -1,11 +1,45 @@
+import io
 from pathlib import Path
 
 import pytest
 
-from montecarlo.cli import build_parser, main
+from montecarlo.cli import _ensure_utf8_streams, build_parser, main
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_KANBAN_CSV = str(REPO_ROOT / "exemples" / "kanban_zone.csv")
+
+
+class TestEnsureUtf8Streams:
+    def test_reconfigures_stdout_and_stderr_to_utf8(self, monkeypatch):
+        fake_out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+        fake_err = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+        monkeypatch.setattr("sys.stdout", fake_out)
+        monkeypatch.setattr("sys.stderr", fake_err)
+
+        _ensure_utf8_streams()
+
+        assert fake_out.encoding.lower() == "utf-8"
+        assert fake_err.encoding.lower() == "utf-8"
+
+    def test_emoji_no_longer_raises_on_a_legacy_encoding(self, monkeypatch):
+        # Reproduces the crash this fix addresses: printing status emoji
+        # (📋 🔄 🎯 ⚠️ ✅) to a stream whose native encoding can't
+        # represent them used to raise UnicodeEncodeError.
+        fake_out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+        monkeypatch.setattr("sys.stdout", fake_out)
+        monkeypatch.setattr("sys.stderr", io.TextIOWrapper(io.BytesIO(), encoding="cp1252"))
+
+        _ensure_utf8_streams()
+        print("📋 Configuration")  # must not raise
+        fake_out.flush()
+
+    def test_tolerates_streams_without_reconfigure(self, monkeypatch):
+        class NoReconfigure:
+            pass
+
+        monkeypatch.setattr("sys.stdout", NoReconfigure())
+        monkeypatch.setattr("sys.stderr", NoReconfigure())
+        _ensure_utf8_streams()  # must not raise
 
 
 class TestBuildParser:
