@@ -1,0 +1,234 @@
+from datetime import date
+
+import pytest
+
+from montecarlo.loaders import (
+    KanbanZoneCSVLoader,
+    LOADERS,
+    ThroughputLoader,
+    TxtLoader,
+    _fill_zero_weeks,
+    get_loader,
+    load_throughput_auto,
+)
+
+
+class TestFillZeroWeeks:
+    """
+    Regression coverage for the zero-throughput-week bug: a calendar week
+    with no completions must be counted as 0.0, not silently dropped —
+    dropping it inflates average throughput and destabilizes small
+    history-window sampling (see montecarlo/loaders.py docstring).
+    """
+
+    def test_empty_input_without_bounds_returns_empty(self):
+        assert _fill_zero_weeks({}) == {}
+
+    def test_no_gaps_returned_unchanged(self):
+        weekly = {date(2026, 1, 5): 8.0, date(2026, 1, 12): 5.0}
+        assert _fill_zero_weeks(weekly) == weekly
+
+    def test_fills_interior_gap_with_zero(self):
+        # Week of 2026-01-12 has no data of its own between two real weeks.
+        weekly = {date(2026, 1, 5): 8.0, date(2026, 1, 19): 8.0}
+        filled = _fill_zero_weeks(weekly)
+        assert filled[date(2026, 1, 12)] == 0.0
+        assert filled[date(2026, 1, 5)] == 8.0
+        assert filled[date(2026, 1, 19)] == 8.0
+        assert len(filled) == 3
+
+    def test_does_not_overwrite_existing_values(self):
+        weekly = {date(2026, 1, 5): 8.0, date(2026, 1, 12): 3.0}
+        filled = _fill_zero_weeks(weekly)
+        assert filled[date(2026, 1, 12)] == 3.0
+
+    def test_explicit_start_fills_leading_zero_week(self):
+        # Real data starts a week after the requested start date.
+        weekly = {date(2026, 1, 12): 8.0}
+        filled = _fill_zero_weeks(weekly, start=date(2026, 1, 5))
+        assert filled[date(2026, 1, 5)] == 0.0
+        assert filled[date(2026, 1, 12)] == 8.0
+
+    def test_explicit_end_fills_trailing_zero_week(self):
+        # Real data ends a week before the requested end date.
+        weekly = {date(2026, 1, 5): 8.0}
+        filled = _fill_zero_weeks(weekly, end=date(2026, 1, 12))
+        assert filled[date(2026, 1, 5)] == 8.0
+        assert filled[date(2026, 1, 12)] == 0.0
+
+    def test_start_and_end_are_normalized_to_monday(self):
+        # A Thursday start / Tuesday end should still bucket to full weeks.
+        weekly = {date(2026, 1, 5): 8.0}
+        filled = _fill_zero_weeks(
+            weekly, start=date(2026, 1, 1), end=date(2026, 1, 13)
+        )
+        assert date(2025, 12, 29) in filled  # Monday of the week containing Jan 1
+        assert date(2026, 1, 12) in filled   # Monday of the week containing Jan 13
+
+    def test_start_beyond_existing_data_builds_full_range(self):
+        filled = _fill_zero_weeks({}, start=date(2026, 1, 5), end=date(2026, 1, 19))
+        assert filled == {
+            date(2026, 1, 5): 0.0,
+            date(2026, 1, 12): 0.0,
+            date(2026, 1, 19): 0.0,
+        }
+
+
+class TestThroughputLoaderBase:
+    def test_match_uses_extension_allowlist(self):
+        loader = ThroughputLoader()
+        loader.EXTENSIONS = [".csv"]
+        assert loader.match("data.csv") is True
+        assert loader.match("data.txt") is False
+
+    def test_load_not_implemented(self):
+        loader = ThroughputLoader()
+        with pytest.raises(NotImplementedError):
+            loader.load("data.csv", window_weeks=None)
+
+
+class TestKanbanZoneCSVLoader:
+    def test_match_requires_header_columns(self, tmp_path):
+        loader = KanbanZoneCSVLoader()
+        good = tmp_path / "good.csv"
+        good.write_text("Done At,CF Envergure\n03-20-2026 10:00,Petit\n", encoding="utf-8")
+        assert loader.match(str(good)) is True
+
+        bad = tmp_path / "bad.csv"
+        bad.write_text("Date,Points\n2026-03-20,3\n", encoding="utf-8")
+        assert loader.match(str(bad)) is False
+
+    def test_match_rejects_wrong_extension(self, kanban_csv):
+        loader = KanbanZoneCSVLoader()
+        assert loader.match("data.txt") is False
+
+    def test_match_missing_file_returns_false(self):
+        loader = KanbanZoneCSVLoader()
+        assert loader.match("does/not/exist.csv") is False
+
+    def test_aggregates_same_week_items(self, kanban_csv):
+        path = kanban_csv([
+            ("03-16-2026 09:00", "Petit"),   # Monday, 1 pt
+            ("03-18-2026 09:00", "Moyen"),   # same week, 3 pts
+            ("03-23-2026 09:00", "Grand"),   # next week, 5 pts
+        ])
+        weekly = KanbanZoneCSVLoader().load(path, window_weeks=None)
+        assert weekly[date(2026, 3, 16)] == 4.0
+        assert weekly[date(2026, 3, 23)] == 5.0
+
+    def test_skips_unknown_envergure(self, kanban_csv):
+        path = kanban_csv([
+            ("03-16-2026 09:00", "Petit"),
+            ("03-16-2026 09:00", "Inconnu"),
+        ])
+        weekly = KanbanZoneCSVLoader().load(path, window_weeks=None)
+        assert weekly[date(2026, 3, 16)] == 1.0
+
+    def test_skips_blank_done_at(self, kanban_csv):
+        path = kanban_csv([("", "Petit"), ("03-16-2026 09:00", "Petit")])
+        weekly = KanbanZoneCSVLoader().load(path, window_weeks=None)
+        assert weekly == {date(2026, 3, 16): 1.0}
+
+    def test_no_matching_rows_returns_empty_dict(self, kanban_csv, capsys):
+        path = kanban_csv([("", "Petit")])
+        weekly = KanbanZoneCSVLoader().load(path, window_weeks=None)
+        assert weekly == {}
+        assert "No throughput data found" in capsys.readouterr().err
+
+    def test_tiny_score_is_half_point(self, kanban_csv):
+        path = kanban_csv([("03-16-2026 09:00", "Très petit")])
+        weekly = KanbanZoneCSVLoader().load(path, window_weeks=None)
+        assert weekly[date(2026, 3, 16)] == 0.5
+
+    def test_window_weeks_keeps_only_most_recent(self, kanban_csv):
+        path = kanban_csv([
+            ("01-05-2026 09:00", "Grand"),   # week 1
+            ("01-12-2026 09:00", "Grand"),   # week 2
+            ("01-19-2026 09:00", "Grand"),   # week 3 (most recent)
+        ])
+        weekly = KanbanZoneCSVLoader().load(path, window_weeks=1)
+        assert weekly == {date(2026, 1, 19): 5.0}
+
+    def test_window_start_end_filters_and_fills_zero_boundary(self, kanban_csv):
+        # Only one item, in the middle of the requested range: the weeks
+        # before and after it must still show up as explicit zeros.
+        path = kanban_csv([("01-12-2026 09:00", "Petit")])
+        weekly = KanbanZoneCSVLoader().load(
+            path, window_weeks=None,
+            window_start=date(2026, 1, 5), window_end=date(2026, 1, 19),
+        )
+        assert weekly == {
+            date(2026, 1, 5): 0.0,
+            date(2026, 1, 12): 1.0,
+            date(2026, 1, 19): 0.0,
+        }
+
+    def test_window_start_end_excludes_items_outside_range(self, kanban_csv):
+        path = kanban_csv([
+            ("01-01-2026 09:00", "Grand"),   # before range
+            ("01-12-2026 09:00", "Petit"),   # inside range
+            ("02-01-2026 09:00", "Grand"),   # after range
+        ])
+        weekly = KanbanZoneCSVLoader().load(
+            path, window_weeks=None,
+            window_start=date(2026, 1, 5), window_end=date(2026, 1, 19),
+        )
+        assert sum(weekly.values()) == 1.0
+
+
+class TestTxtLoader:
+    def test_assigns_consecutive_mondays_oldest_first(self, txt_file):
+        path = txt_file([3, 8, 5])
+        weekly = TxtLoader().load(path, window_weeks=None)
+        values_in_chronological_order = [v for _, v in sorted(weekly.items())]
+        assert values_in_chronological_order == [3.0, 8.0, 5.0]
+
+    def test_empty_file_returns_empty_dict(self, txt_file, capsys):
+        path = txt_file([])
+        weekly = TxtLoader().load(path, window_weeks=None)
+        assert weekly == {}
+        assert "No data found" in capsys.readouterr().err
+
+    def test_window_weeks_keeps_most_recent(self, txt_file):
+        path = txt_file([3, 8, 5])
+        weekly = TxtLoader().load(path, window_weeks=1)
+        assert list(weekly.values()) == [5.0]
+
+    def test_window_start_end_filters(self, txt_file):
+        path = txt_file([3, 8, 5, 2])
+        full = TxtLoader().load(path, window_weeks=None)
+        mondays = sorted(full.keys())
+        weekly = TxtLoader().load(
+            path, window_weeks=None, window_start=mondays[1], window_end=mondays[2],
+        )
+        assert weekly == {mondays[1]: full[mondays[1]], mondays[2]: full[mondays[2]]}
+
+
+class TestLoaderRegistry:
+    def test_get_loader_detects_kanban_zone(self, kanban_csv):
+        path = kanban_csv([("03-16-2026 09:00", "Petit")])
+        assert isinstance(get_loader(path), KanbanZoneCSVLoader)
+
+    def test_get_loader_detects_txt(self, txt_file):
+        path = txt_file([3, 8])
+        assert isinstance(get_loader(path), TxtLoader)
+
+    def test_get_loader_returns_none_for_unrecognized(self, tmp_path):
+        path = tmp_path / "data.xlsx"
+        path.write_text("nope", encoding="utf-8")
+        assert get_loader(str(path)) is None
+
+    def test_loaders_registry_is_not_empty(self):
+        assert len(LOADERS) >= 2
+
+    def test_load_throughput_auto_delegates(self, kanban_csv):
+        path = kanban_csv([("03-16-2026 09:00", "Petit")])
+        weekly = load_throughput_auto(path, window_weeks=None)
+        assert weekly == {date(2026, 3, 16): 1.0}
+
+    def test_load_throughput_auto_warns_on_unsupported_format(self, tmp_path, capsys):
+        path = tmp_path / "data.xlsx"
+        path.write_text("nope", encoding="utf-8")
+        weekly = load_throughput_auto(str(path), window_weeks=None)
+        assert weekly == {}
+        assert "Unsupported format" in capsys.readouterr().err

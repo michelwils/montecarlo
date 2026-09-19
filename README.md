@@ -17,6 +17,15 @@ Command-line tool for estimating the probability of delivering a set of work ite
 pip install -r requirements.txt
 ```
 
+## Running tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+The suite covers the pure-logic modules (`dates`, `loaders`, `annotations`, `simulation`) with unit tests, and `charts`/`cli` with lighter smoke tests that render a real chart and drive `main()` end-to-end. It includes regression tests for two bugs found in earlier reviews: zero-throughput weeks being silently dropped at history-window boundaries, and `simulate()` hanging forever on an all-zero sample pool.
+
 ---
 
 ## Quick start
@@ -237,7 +246,10 @@ montecarlo/              Implementation package
     theme.py                Chart colour palette
     charts.py                Chart rendering (make_charts and its sub-charts)
     cli.py                   Argument parsing and main()
+tests/                  Pytest suite (see "Running tests")
 requirements.txt        Python dependencies
+requirements-dev.txt    Adds pytest, for running tests
+pytest.ini              Pytest configuration
 README.md               This documentation
 .gitignore
 data/                   Input data (gitignored — place your files here)
