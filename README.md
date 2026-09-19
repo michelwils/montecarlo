@@ -124,9 +124,9 @@ Native export from [Kanban Zone](https://kanbanzone.com/). Required columns:
 | Column                          | Description |
 |---|---|
 | `Done At`                       | Completion date, format `MM-DD-YYYY HH:MM` or `MM/DD/YYYY hh:mm AM/PM` |
-| `CF Envergure` or `CF Size`     | Item size: `Très petit`, `Petit`, `Moyen`, `Grand`, or `Très grand` |
+| `CF Envergure` or `CF Size`     | Item size: `Très petit`/`X-Small`, `Petit`/`Small`, `Moyen`/`Medium`, `Grand`/`Large`, or `Très grand`/`X-Large` |
 
-Custom field names are set per-board, so both the French names this project's own team uses and their likely English equivalents are accepted — for both the column name and the size value inside it (`Petit` or `Small`, `Moyen` or `Medium`, …; see [Item sizes and point values](#item-sizes-and-point-values)). All other export columns are ignored. Detection is automatic: if `Done At` and one of the size column names are present in the header row, the file is recognized as a Kanban Zone export.
+Custom field names are set per-board, so both the French names this project's own team uses and their likely English equivalents are accepted — for both the column name and the size value inside it (see [Item sizes and point values](#item-sizes-and-point-values)). All other export columns are ignored. Detection is automatic: if `Done At` and one of the size column names are present in the header row, the file is recognized as a Kanban Zone export.
 
 Calendar weeks with no completions between the first and last delivered item count as 0 pts of throughput — they are not skipped. Omitting them would silently inflate the average throughput and destabilize the sensitivity chart's small history windows.
 
