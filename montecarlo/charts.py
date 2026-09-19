@@ -34,7 +34,7 @@ def _draw_params_panel(
     ax_params,
     s: dict[str, str],
     *,
-    file_str: str,
+    source_str: str,
     format_str: str,
     target_score: float,
     mix_str: str,
@@ -55,7 +55,7 @@ def _draw_params_panel(
         spine.set_edgecolor(C_GRID)
 
     params = [
-        (s["param_file"],        file_str),
+        (s["param_source"],      source_str),
         (s["param_format"],      format_str),
         (s["param_target"],      f"{target_score:g} pts"),
         (s["param_mix"],         mix_str),
@@ -421,11 +421,11 @@ def make_charts(
     if target_date is not None:
         duration_str += f" ({s['console_until'].format(date=target_date)})"
 
-    file_str = source_label if source_label is not None else Path(filepath).name
+    source_str = source_label if source_label is not None else Path(filepath).name
 
     _draw_params_panel(
         ax_params, s,
-        file_str=file_str, format_str=format_str, target_score=target_score,
+        source_str=source_str, format_str=format_str, target_score=target_score,
         mix_str=mix_str, duration_str=duration_str, n_workdays=n_workdays,
         days_off_str=days_off_str, unplanned_str=unplanned_str,
         fenetre_str=fenetre_str, display_str=display_str,

@@ -333,7 +333,7 @@ def main() -> None:
         format_label = loader.FORMAT_NAME if loader else "?"
         label_width  = 14
         print(f"\n📋 {s['console_config_header']}")
-        print(f"   {s['param_file']:<{label_width}}: {source_label}  [{format_label}]")
+        print(f"   {s['param_source']:<{label_width}}: {source_label}  [{format_label}]")
         print(f"   {s['console_sim_start']:<{label_width}}: {start_date} {s['console_monday_suffix']}")
         duration_str = f"{weeks} {s['console_weeks_word']}"
         if target_date is not None:

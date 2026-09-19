@@ -11,7 +11,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         # Figure title
         "title":             "Monte Carlo Simulation",
         # Parameters panel labels
-        "param_file":        "File",
+        "param_source":      "Source",
         "param_format":      "Format",
         "param_target":      "Target",
         "param_mix":         "Mix",
@@ -88,7 +88,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         # Titre de la figure
         "title":             "Simulation Monte Carlo",
         # Étiquettes du panneau de paramètres
-        "param_file":        "Fichier",
+        "param_source":      "Source",
         "param_format":      "Format",
         "param_target":      "Cible",
         "param_mix":         "Mix",
