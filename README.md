@@ -47,7 +47,7 @@ python monte_carlo.py -p 42 -e 2026-12-15 -v 5 -c 80 90 --lang fr
 python monte_carlo.py --formats
 ```
 
-The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.png` (override with `-o/--output-dir`).
+The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.png` (override the directory with `-o/--output-dir`, the `monte_carlo` prefix with `-P/--output-prefix`).
 
 ![Sample report](exemples/sample_report.png)
 
@@ -80,6 +80,8 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 | `-c` | `--certainties`   | `80`          | Certainty levels to display (e.g. `-c 80 90 95`) |
 | `-a` | `--annotations`   | auto-detect   | CSV annotations file (see below) |
 | `-o` | `--output-dir`    | `output`      | Directory for generated charts |
+| `-P` | `--output-prefix` | `monte_carlo` | Filename prefix for the generated chart (defaults to the config file's own name with `--configs`) |
+|      | `--configs`       | none          | Run each of these `@`config files as a separate simulation in one invocation (see below) |
 |      | `--lang`          | `en`          | Chart language: `en` or `fr` |
 | `-T` | `--title`         | language default | Custom chart title |
 | `-D` | `--description`   | none          | Optional subtitle shown below the chart title |
@@ -112,6 +114,16 @@ One flag per line (`-m 5`, `--lang fr`, …), same names as `--help`. Blank line
 Add more flags after `@data/run.conf` on the command line to override just those for one run (e.g. `python monte_carlo.py @data/run.conf -w 4`).
 
 **Example file:** `exemples/run.conf` — copy it to `data/run.conf` (gitignored) as a starting point for your own team. Pairing it with `-e/--target-date` means the file rarely needs editing: only the scope (`-t/-s/-m/-l/-x/-p`) and the deadline change as the plan evolves, and "weeks remaining" is recalculated automatically from today every time you run it.
+
+### Running several configs at once
+
+If you track more than one team or board, `--configs` runs each file as its own separate simulation and chart in a single command:
+
+```bash
+python monte_carlo.py --configs data/team_a.conf data/team_b.conf --lang fr -n 20000
+```
+
+Flags placed after the file list (`--lang fr -n 20000` above) are shared across every run, letting each config file hold only what's specific to that team while common settings live on the command line. Each run's chart is named after its own config file (`team_a_YYYYMMDD_HHMMSS.png`, `team_b_...`) unless `-P/--output-prefix` is given explicitly, in which case every run uses that same prefix instead.
 
 ---
 

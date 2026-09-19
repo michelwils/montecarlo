@@ -263,6 +263,13 @@ def build_parser() -> argparse.ArgumentParser:
                    help=f"CSV annotations file (default: {DEFAULT_ANNOTATIONS_FILE} if present)")
     p.add_argument("-o", "--output-dir", default=DEFAULT_OUTPUT_DIR,
                    help=f"Directory for generated charts (default: {DEFAULT_OUTPUT_DIR})")
+    p.add_argument("-P", "--output-prefix", type=str, default=None,
+                   help="Prefix for the generated chart's filename (default: 'monte_carlo', "
+                        "or the config file's own name when using --configs)")
+    p.add_argument("--configs", type=str, nargs="+", default=None, metavar="FILE",
+                   help="Run each of these @config files as a separate simulation in one "
+                        "invocation. Combine with other flags on the command line to apply "
+                        "them to every run, e.g. '--configs a.conf b.conf --lang fr -n 500'.")
     p.add_argument("--lang", choices=list(CHART_STRINGS.keys()), default="en",
                    help="Language for the generated chart (default: en)")
     p.add_argument("-T", "--title", type=str, default=None,
@@ -274,21 +281,9 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main() -> None:
-    _ensure_utf8_streams()
-
-    parser = build_parser()
-    args = parser.parse_args()
+def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Run one full simulation + chart from an already-parsed args namespace."""
     s = CHART_STRINGS[args.lang]  # console + chart string table
-
-    # List supported formats
-    if args.formats:
-        print(f"\n📋 {s['console_formats_header']}\n")
-        for loader in LOADERS:
-            exts = ", ".join(loader.EXTENSIONS)
-            print(f"  [{loader.FORMAT_NAME}]  {exts}")
-            print(f"  {loader.DESCRIPTION}\n")
-        sys.exit(0)
 
     target_score = compute_target_score(args)
     if target_score == 0 or (args.weeks is None and args.target_date is None):
@@ -400,9 +395,45 @@ def main() -> None:
             n_simulations=args.simulations,
             lang=args.lang,
             output_dir=args.output_dir,
+            output_prefix=args.output_prefix or "monte_carlo",
             title=args.title,
             description=args.description,
         )
     finally:
         if args.board is not None:
             Path(fpath).unlink(missing_ok=True)
+
+
+def main() -> None:
+    _ensure_utf8_streams()
+
+    parser = build_parser()
+    args = parser.parse_args()
+
+    # List supported formats
+    if args.formats:
+        s = CHART_STRINGS[args.lang]
+        print(f"\n📋 {s['console_formats_header']}\n")
+        for loader in LOADERS:
+            exts = ", ".join(loader.EXTENSIONS)
+            print(f"  [{loader.FORMAT_NAME}]  {exts}")
+            print(f"  {loader.DESCRIPTION}\n")
+        sys.exit(0)
+
+    if args.configs:
+        # Re-derive "everything except --configs and its file list" from
+        # the raw argv, so those shared flags (e.g. --lang fr -n 500) can
+        # be combined with each config file individually below. This
+        # relies on --configs being spelled out in full (no abbreviation).
+        argv = sys.argv[1:]
+        idx = argv.index("--configs")
+        shared_argv = argv[:idx] + argv[idx + 1 + len(args.configs):]
+        for config_file in args.configs:
+            config_args = parser.parse_args([f"@{config_file}"] + shared_argv)
+            if config_args.output_prefix is None:
+                config_args.output_prefix = Path(config_file).stem
+            print(f"\n=== {config_file} ===")
+            run_forecast(config_args, parser)
+        return
+
+    run_forecast(args, parser)

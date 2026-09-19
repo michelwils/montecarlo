@@ -73,6 +73,19 @@ class TestBuildParser:
         assert args.window_start == "2026-01-01"
         assert args.window_end == "2026-03-31"
 
+    def test_output_prefix_defaults_to_none(self):
+        args = build_parser().parse_args([])
+        assert args.output_prefix is None
+
+    def test_configs_defaults_to_none(self):
+        args = build_parser().parse_args([])
+        assert args.configs is None
+
+    def test_configs_accepts_multiple_files(self):
+        args = build_parser().parse_args(["--configs", "a.conf", "b.conf", "--lang", "fr"])
+        assert args.configs == ["a.conf", "b.conf"]
+        assert args.lang == "fr"
+
 
 class TestConfigArgumentParser:
     def setup_method(self):
@@ -422,6 +435,63 @@ class TestMainEndToEnd:
         out = capsys.readouterr().out
         assert "Probability of delivering" in out
         assert len(list(tmp_path.glob("*.png"))) == 1
+
+    def test_output_prefix_names_the_chart_file(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "-f", SAMPLE_KANBAN_CSV,
+            "-m", "3", "-w", "8", "-n", "200",
+            "-P", "my_prefix",
+            "-o", str(tmp_path),
+        ])
+        main()
+        files = list(tmp_path.glob("*.png"))
+        assert len(files) == 1
+        assert files[0].name.startswith("my_prefix_")
+
+    def test_configs_runs_each_file_with_its_own_prefix(self, tmp_path, monkeypatch, capsys):
+        config_a = tmp_path / "team_a.conf"
+        config_a.write_text(f'-f "{SAMPLE_KANBAN_CSV}"\n-m 3\n-w 8\n', encoding="utf-8")
+        config_b = tmp_path / "team_b.conf"
+        config_b.write_text(f'-f "{SAMPLE_KANBAN_CSV}"\n-s 4\n-w 6\n', encoding="utf-8")
+
+        out_dir = tmp_path / "out"
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "--configs", str(config_a), str(config_b),
+            "-n", "200", "--lang", "fr",  # shared flags applied to both runs
+            "-o", str(out_dir),
+        ])
+        main()
+        out = capsys.readouterr().out
+
+        # Each run is announced and uses French (the shared flag).
+        assert str(config_a) in out
+        assert str(config_b) in out
+        assert out.count("Exécution de 200 simulations") == 2
+
+        files = sorted(p.name for p in out_dir.glob("*.png"))
+        assert len(files) == 2
+        assert files[0].startswith("team_a_")
+        assert files[1].startswith("team_b_")
+
+    def test_configs_with_explicit_prefix_applies_to_all_runs(self, tmp_path, monkeypatch, capsys):
+        config_a = tmp_path / "team_a.conf"
+        config_a.write_text(f'-f "{SAMPLE_KANBAN_CSV}"\n-m 3\n-w 8\n', encoding="utf-8")
+        config_b = tmp_path / "team_b.conf"
+        config_b.write_text(f'-f "{SAMPLE_KANBAN_CSV}"\n-s 4\n-w 6\n', encoding="utf-8")
+
+        out_dir = tmp_path / "out"
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "--configs", str(config_a), str(config_b),
+            "-P", "shared_name", "-n", "200",
+            "-o", str(out_dir),
+        ])
+        main()
+        files = sorted(p.name for p in out_dir.glob("*.png"))
+        assert len(files) == 2
+        assert all(f.startswith("shared_name_") for f in files)
 
     def test_runs_from_the_api_and_cleans_up_the_temp_file(self, tmp_path, monkeypatch, capsys):
         cards = [

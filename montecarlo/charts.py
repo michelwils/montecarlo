@@ -347,6 +347,7 @@ def make_charts(
     n_simulations: int = 10_000,
     lang: str = "en",
     output_dir: str = DEFAULT_OUTPUT_DIR,
+    output_prefix: str = "monte_carlo",
     title: str | None = None,
     description: str | None = None,
 ) -> None:
@@ -455,7 +456,7 @@ def make_charts(
     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
-    out = (out_path / f"monte_carlo_{ts}.png").resolve()
+    out = (out_path / f"{output_prefix}_{ts}.png").resolve()
     plt.savefig(out, dpi=150, bbox_inches="tight", facecolor=BG)
     plt.close()
     print(f"✅ {s['console_chart_saved'].format(path=out)}")
