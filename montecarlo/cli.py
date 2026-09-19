@@ -97,10 +97,11 @@ def main() -> None:
 
     parser = build_parser()
     args = parser.parse_args()
+    s = CHART_STRINGS[args.lang]  # console + chart string table
 
     # List supported formats
     if args.formats:
-        print("\n📋 Supported data formats:\n")
+        print(f"\n📋 {s['console_formats_header']}\n")
         for loader in LOADERS:
             exts = ", ".join(loader.EXTENSIONS)
             print(f"  [{loader.FORMAT_NAME}]  {exts}")
@@ -139,7 +140,7 @@ def main() -> None:
     if args.file is not None:
         fpath = args.file
         if not Path(fpath).exists():
-            print(f"\n❌ File not found: {fpath}", file=sys.stderr)
+            print(f"\n❌ {s['console_file_not_found'].format(path=fpath)}", file=sys.stderr)
             sys.exit(1)
     else:
         candidates = []
@@ -149,7 +150,7 @@ def main() -> None:
             candidates.append(DEFAULT_THROUGHPUT_TXT)
         if not candidates:
             print(
-                f"\n❌ No data file found ({DEFAULT_FILE} or {DEFAULT_THROUGHPUT_TXT}).",
+                f"\n❌ {s['console_no_data_file'].format(a=DEFAULT_FILE, b=DEFAULT_THROUGHPUT_TXT)}",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -159,21 +160,21 @@ def main() -> None:
                 fpath = candidate
                 break
         if fpath is None:
-            print("\n❌ No valid data file found.", file=sys.stderr)
+            print(f"\n❌ {s['console_no_valid_data_file']}", file=sys.stderr)
             sys.exit(1)
 
     # Simulation window
     if args.start_date is not None:
         start_date = parse_date(args.start_date)
         if start_date is None:
-            print("❌ Invalid date format.", file=sys.stderr)
+            print(f"❌ {s['console_invalid_date']}", file=sys.stderr)
             sys.exit(1)
     else:
         start_date = next_monday()
 
     n_workdays  = args.weeks * 5 - args.days_off
     if n_workdays <= 0:
-        print("❌ Work day count is zero or negative.", file=sys.stderr)
+        print(f"❌ {s['console_zero_workdays']}", file=sys.stderr)
         sys.exit(1)
 
     # Load throughput
@@ -184,7 +185,7 @@ def main() -> None:
         window_end=window_end,
     )
     if not daily:
-        print("❌ Could not load throughput data.", file=sys.stderr)
+        print(f"❌ {s['console_could_not_load']}", file=sys.stderr)
         sys.exit(1)
 
     samples = weekly_samples(daily)
@@ -192,27 +193,36 @@ def main() -> None:
     # Summary
     loader       = get_loader(fpath)
     format_label = loader.FORMAT_NAME if loader else "?"
-    print(f"\n📋 Configuration")
-    print(f"   File         : {fpath}  [{format_label}]")
-    print(f"   Sim. start   : {start_date} (Monday)")
-    print(f"   Duration     : {args.weeks} weeks")
-    print(f"   Days off     : {args.days_off} days")
-    print(f"   Work days    : {n_workdays}")
-    history_window = (
-        f"{window_start} to {window_end}"
-        if window_start is not None and window_end is not None
-        else ('full' if args.window is None else f'{args.window} weeks')
+    label_width  = 14
+    print(f"\n📋 {s['console_config_header']}")
+    print(f"   {s['param_file']:<{label_width}}: {fpath}  [{format_label}]")
+    print(f"   {s['console_sim_start']:<{label_width}}: {start_date} {s['console_monday_suffix']}")
+    print(f"   {s['param_duration']:<{label_width}}: {args.weeks} {s['console_weeks_word']}")
+    print(f"   {s['param_holidays']:<{label_width}}: {args.days_off} {s['console_days_word']}")
+    print(f"   {s['param_workdays']:<{label_width}}: {n_workdays}")
+    if window_start is not None and window_end is not None:
+        history_window = s["window_range"].format(start=window_start, end=window_end)
+    elif args.window is None:
+        history_window = s["window_full"]
+    else:
+        history_window = f"{args.window} {s['console_weeks_word']}"
+    print(f"   {s['param_window']:<{label_width}}: {history_window}")
+    print(f"   {s['param_certainties']:<{label_width}}: {', '.join(str(c)+'%' for c in sorted(args.certainties))}")
+    mix = " + ".join(
+        f"{n}×{label}" for n, label in (
+            (args.tiny, s["size_tiny"]), (args.small, s["size_small"]),
+            (args.medium, s["size_medium"]), (args.large, s["size_large"]),
+            (args.xlarge, s["size_xlarge"]),
+        )
     )
-    print(f"   Hist. window : {history_window}")
-    print(f"   Certainties  : {', '.join(str(c)+'%' for c in sorted(args.certainties))}")
-    mix = f"{args.tiny}×Very Small + {args.small}×Small + {args.medium}×Medium + {args.large}×Large + {args.xlarge}×X-Large"
     if args.points:
-        mix += f" + {args.points} direct pts"
-    print(f"   Target       : {target_score:g} pts  ({mix})")
-    print(f"   Source weeks : {len(daily)} wk., avg. throughput: {np.mean(samples):.1f} pts/wk.\n")
+        mix += " + " + s["console_direct_pts"].format(n=args.points)
+    print(f"   {s['param_target']:<{label_width}}: {target_score:g} pts  ({mix})")
+    print(f"   {s['console_source_weeks_label']:<{label_width}}: "
+          f"{s['console_source_weeks'].format(n=len(daily), avg=np.mean(samples))}\n")
 
     # Run simulation
-    print(f"🔄 Running {args.simulations:,} simulations…")
+    print(s["console_running"].format(n=args.simulations))
     rng = np.random.default_rng()
     weeks_arr, items_arr = simulate(
         samples, target_score, n_workdays, args.simulations, rng, n_weeks=args.weeks
@@ -222,13 +232,13 @@ def main() -> None:
     pct_ok = 100 * np.sum(weeks_arr <= args.weeks) / args.simulations
     for p in sorted(args.certainties):
         val = np.nanpercentile(weeks_arr, p)
-        print(f"   {p:3d}% : deliver target in ≤ {val:.1f} weeks")
-    print(f"\n   🎯 Probability of delivering in ≤ {args.weeks} wk.: {pct_ok:.1f}%\n")
+        print(f"   {s['console_certainty_line'].format(p=p, val=val)}")
+    print(f"\n   🎯 {s['console_probability'].format(n=args.weeks, pct=pct_ok)}\n")
 
     # Annotations
     annots = load_annotations(args.annotations)
     if annots:
-        print(f"   📌 {len(annots)} annotation date(s) loaded")
+        print(f"   📌 {s['console_annotations_loaded'].format(n=len(annots))}")
 
     # Charts
     display_window = None if args.chart_weeks == 0 else args.chart_weeks

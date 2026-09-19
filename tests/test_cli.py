@@ -133,3 +133,24 @@ class TestMainEndToEnd:
             main()
         assert exc.value.code == 0
         assert "kanban_zone" in capsys.readouterr().out
+
+    def test_french_console_output_is_translated(self, tmp_path, monkeypatch, capsys):
+        """
+        Regression test: the console summary used to be hardcoded in
+        English regardless of --lang, and its history-window line had
+        the same "{start} to {end}" bug fixed on the chart panel.
+        """
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "-f", SAMPLE_KANBAN_CSV,
+            "-s", "5", "-w", "8",
+            "--window-start", "2026-01-01", "--window-end", "2026-03-31",
+            "-n", "200",
+            "--lang", "fr",
+            "-o", str(tmp_path),
+        ])
+        main()
+        out = capsys.readouterr().out
+        assert "Probabilité de livrer" in out
+        assert "2026-01-01 au 2026-03-31" in out
+        assert " to " not in out

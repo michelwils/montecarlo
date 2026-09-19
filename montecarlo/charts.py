@@ -435,4 +435,4 @@ def make_charts(
     out = (out_path / f"monte_carlo_{ts}.png").resolve()
     plt.savefig(out, dpi=150, bbox_inches="tight", facecolor=BG)
     plt.close()
-    print(f"✅ Chart saved: {out}")
+    print(f"✅ {s['console_chart_saved'].format(path=out)}")
