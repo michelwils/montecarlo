@@ -45,11 +45,11 @@ def _ensure_utf8_streams() -> None:
 def compute_target_score(args: argparse.Namespace) -> float:
     """Total point target implied by the requested item mix."""
     return (
-        args.tiny * SCORES["Très petit"]
-        + args.small * SCORES["Petit"]
-        + args.medium * SCORES["Moyen"]
-        + args.large * SCORES["Grand"]
-        + args.xlarge * SCORES["Très grand"]
+        args.tiny * SCORES["X-Small"]
+        + args.small * SCORES["Small"]
+        + args.medium * SCORES["Medium"]
+        + args.large * SCORES["Large"]
+        + args.xlarge * SCORES["X-Large"]
         + args.points
     )
 
@@ -250,8 +250,9 @@ def build_parser() -> argparse.ArgumentParser:
                    metavar="0-1",
                    help="Fraction of weekly throughput to discount for unplanned/ad hoc work "
                         "that can't be forecast (default: 0). Kanban Zone CSVs with a "
-                        "'CF Prioritaire' field already exclude that work automatically; use "
-                        "this for plain-text throughput files, or to add extra margin.")
+                        "'CF Exception'/'CF Prioritaire' field already exclude that work "
+                        "automatically; use this for plain-text throughput files, or to add "
+                        "extra margin.")
     p.add_argument("-n", "--simulations", type=int, default=N_SIMULATIONS,
                    metavar="N",
                    help=f"Number of Monte Carlo simulations (default: {N_SIMULATIONS:,})")

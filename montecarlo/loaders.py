@@ -89,10 +89,10 @@ def _apply_window_weeks(
 
 
 # Kanban Zone custom field names are set by whoever created the board, so
-# both the French names used by this project's own team and their likely
-# English equivalents are accepted.
-_SIZE_COLUMNS      = ("CF Envergure", "CF Size")
-_UNPLANNED_COLUMNS = ("CF Prioritaire", "CF Exception")
+# English names are accepted, along with the French names this project's
+# own team's board actually uses.
+_SIZE_COLUMNS      = ("CF Size", "CF Envergure")
+_UNPLANNED_COLUMNS = ("CF Exception", "CF Prioritaire")
 _UNPLANNED_TRUTHY  = {"true", "1", "yes", "oui"}
 
 
@@ -107,8 +107,8 @@ def _get_field(row: dict[str, str], columns: tuple[str, ...]) -> str:
 
 def _is_unplanned(row: dict[str, str]) -> bool:
     """
-    True if the row is flagged via Kanban Zone's 'CF Prioritaire'/
-    'CF Exception' field — an exception that bypassed the normal planning
+    True if the row is flagged via Kanban Zone's 'CF Exception'/
+    'CF Prioritaire' field — an exception that bypassed the normal planning
     process. Such cards consume real team capacity but can't be forecast
     in advance, so they are excluded from the throughput used to project
     planned work.
@@ -119,16 +119,16 @@ def _is_unplanned(row: dict[str, str]) -> bool:
 class KanbanZoneCSVLoader(ThroughputLoader):
     """
     Loader for Kanban Zone CSV exports.
-    Required columns: 'Done At' and a size field ('CF Envergure' or
-    'CF Size'). Header inspection is used for detection to avoid
+    Required columns: 'Done At' and a size field ('CF Size' or
+    'CF Envergure'). Header inspection is used for detection to avoid
     ambiguity with other CSV formats (Jira, Linear, etc.).
 
-    If an optional 'CF Prioritaire'/'CF Exception' column is present,
+    If an optional 'CF Exception'/'CF Prioritaire' column is present,
     cards flagged true are excluded from throughput — see _is_unplanned().
     """
 
     FORMAT_NAME = "kanban_zone"
-    DESCRIPTION = "Kanban Zone CSV export (columns 'Done At' and 'CF Envergure'/'CF Size')"
+    DESCRIPTION = "Kanban Zone CSV export (columns 'Done At' and 'CF Size'/'CF Envergure')"
     EXTENSIONS = [".csv"]
     _REQUIRED_COLS = {"Done At"}
 

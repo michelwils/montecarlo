@@ -95,7 +95,7 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 | Large      | Grand      | 5   |
 | X-Large    | Très grand | 8   |
 
-Both columns are accepted wherever an item size is read from a data file (`CF Envergure`/`CF Size` values) — see `ALL_SCORES` in `montecarlo/constants.py`.
+Both columns are accepted wherever an item size is read from a data file (`CF Size`/`CF Envergure` values) — see `ALL_SCORES` in `montecarlo/constants.py`.
 
 ---
 
@@ -124,13 +124,13 @@ Native export from [Kanban Zone](https://kanbanzone.com/). Required columns:
 | Column                          | Description |
 |---|---|
 | `Done At`                       | Completion date, format `MM-DD-YYYY HH:MM` or `MM/DD/YYYY hh:mm AM/PM` |
-| `CF Envergure` or `CF Size`     | Item size: `Très petit`/`X-Small`, `Petit`/`Small`, `Moyen`/`Medium`, `Grand`/`Large`, or `Très grand`/`X-Large` |
+| `CF Size` or `CF Envergure`     | Item size: `X-Small`/`Très petit`, `Small`/`Petit`, `Medium`/`Moyen`, `Large`/`Grand`, or `X-Large`/`Très grand` |
 
-Custom field names are set per-board, so both the French names this project's own team uses and their likely English equivalents are accepted — for both the column name and the size value inside it (see [Item sizes and point values](#item-sizes-and-point-values)). All other export columns are ignored. Detection is automatic: if `Done At` and one of the size column names are present in the header row, the file is recognized as a Kanban Zone export.
+Custom field names are set per-board, so English names are accepted, along with the French names this project's own team's board uses — for both the column name and the size value inside it (see [Item sizes and point values](#item-sizes-and-point-values)). All other export columns are ignored. Detection is automatic: if `Done At` and one of the size column names are present in the header row, the file is recognized as a Kanban Zone export.
 
 Calendar weeks with no completions between the first and last delivered item count as 0 pts of throughput — they are not skipped. Omitting them would silently inflate the average throughput and destabilize the sensitivity chart's small history windows.
 
-If an optional `CF Prioritaire` (or `CF Exception`) column is present, cards flagged `true` are excluded from throughput entirely. These are Kanban Zone's exceptions that bypass the normal planning process (ad hoc / unplanned work) — since the simulation's target is built only from planned items, counting historical ad hoc work would overstate how much capacity is actually available for what you're forecasting.
+If an optional `CF Exception` (or `CF Prioritaire`) column is present, cards flagged `true` are excluded from throughput entirely. These are Kanban Zone's exceptions that bypass the normal planning process (ad hoc / unplanned work) — since the simulation's target is built only from planned items, counting historical ad hoc work would overstate how much capacity is actually available for what you're forecasting.
 
 **Example file:** `exemples/kanban_zone.csv`
 
@@ -154,7 +154,7 @@ python monte_carlo.py --board <boardPublicId> -w 12 -l 3 -m 4
 | `--api-key` | none | API key. **Prefer the `KANBAN_ZONE_API_KEY` environment variable instead** — this flag ends up in shell history and, if used in a config file, in a plaintext file on disk |
 | `--include-archived` | off (active cards only) | Also fetch archived cards |
 
-`--board` cannot be combined with `-f/--file`. Cards are converted to the same shape as a CSV export (`Done At`, `CF <label>` per custom field — the API's field labels have no `CF ` prefix; it's added back here to match the CSV column-naming convention) and written to a temporary file for the duration of the run, so the exact same parsing, zero-week-filling, and `CF Prioritaire`/`CF Exception` exclusion logic applies either way.
+`--board` cannot be combined with `-f/--file`. Cards are converted to the same shape as a CSV export (`Done At`, `CF <label>` per custom field — the API's field labels have no `CF ` prefix; it's added back here to match the CSV column-naming convention) and written to a temporary file for the duration of the run, so the exact same parsing, zero-week-filling, and `CF Exception`/`CF Prioritaire` exclusion logic applies either way.
 
 **If your team archives cards once they're done** (common — check by comparing throughput with and without `--include-archived`), the active-only default will undercount historical throughput significantly, since most completed work is no longer "active". `--include-archived` is worth using by default in that case.
 
@@ -172,7 +172,7 @@ Simple format: comma-separated numeric values on a single line, ordered from old
 
 Synthetic dates are assigned automatically, anchoring the last value to the Monday of the previous week.
 
-This format has no per-card detail, so unplanned/ad hoc work can't be detected automatically the way it is for Kanban Zone's `CF Prioritaire` field — use `-u/--unplanned-ratio` to apply an equivalent manual discount.
+This format has no per-card detail, so unplanned/ad hoc work can't be detected automatically the way it is for Kanban Zone's `CF Exception`/`CF Prioritaire` field — use `-u/--unplanned-ratio` to apply an equivalent manual discount.
 
 **Example file:** `exemples/throughput.txt`
 

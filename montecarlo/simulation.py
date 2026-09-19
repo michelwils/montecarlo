@@ -25,8 +25,9 @@ def simulate(
         discount, modeling capacity that will be consumed by ad hoc work
         that can't be planned for in advance (e.g. a plain-text
         throughput file with no per-card detail to derive this from
-        automatically — Kanban Zone CSVs with a 'CF Prioritaire' field
-        already exclude that work at the source; see loaders.py).
+        automatically — Kanban Zone CSVs with a 'CF Exception'/
+        'CF Prioritaire' field already exclude that work at the
+        source; see loaders.py).
 
     Returns:
         weeks_to_deliver — weeks needed to reach the target score (NaN if
