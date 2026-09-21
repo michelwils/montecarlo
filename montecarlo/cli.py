@@ -456,6 +456,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             args.window, window_start, window_end, n_workdays, fpath, sorted(args.certainties), annots,
             display_window,
             days_off=args.days_off,
+            start_date=start_date,
             target_date=target_date,
             unplanned_ratio=args.unplanned_ratio,
             uniform_size=args.uniform_size,

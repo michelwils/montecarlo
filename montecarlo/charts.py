@@ -112,6 +112,7 @@ def _draw_weeks_histogram(
     certainties: list[int],
     pct_delivered: float,
     n_sim: int,
+    start_date: date,
 ) -> None:
     """Chart 1: distribution of weeks required to reach the target."""
     _style_axis(ax1)
@@ -132,16 +133,25 @@ def _draw_weeks_histogram(
         val = np.nanpercentile(weeks_arr, p)
         col = CERT_COLORS[i % len(CERT_COLORS)]
         ax1.axvline(val, color=col, linewidth=1.8, linestyle="--", alpha=0.90)
+        date_lbl = (
+            s["none_val"] if np.isnan(val)
+            else str(start_date + timedelta(days=round(val * 7)))
+        )
         ax1.text(val + 0.05, ax1.get_ylim()[1] * (0.95 - i * 0.12),
-                 f"{p}%\n{val:.1f}{s['weeks_short']}",
+                 f"{p}%\n{date_lbl}",
                  fontsize=8, color=col, va="top", fontweight="bold")
     ax1.axvline(n_weeks, color=C_TARGET, linewidth=1.8, linestyle=":")
     ax1.text(n_weeks + 0.05, ax1.get_ylim()[1] * 0.70,
-             s["ax1_objective"].format(n=n_weeks),
+             s["ax1_objective"].format(date=start_date + timedelta(weeks=n_weeks)),
              fontsize=8, color=C_TARGET, va="top", fontweight="bold")
     ax1.set_xlabel(s["ax1_xlabel"], fontsize=10)
     ax1.set_ylabel(s["ax1_ylabel"], fontsize=10)
     ax1.set_title(s["ax1_title"].format(pct=pct_delivered, n=n_sim), fontsize=10)
+    ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True, nbins=8))
+    ax1.xaxis.set_major_formatter(
+        mticker.FuncFormatter(lambda x, _: str(start_date + timedelta(weeks=x)))
+    )
+    plt.setp(ax1.get_xticklabels(), rotation=45, ha="right", fontsize=8)
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
     ax1.grid(axis="y", color=C_GRID, linewidth=0.6, linestyle="--")
 
@@ -345,6 +355,7 @@ def make_charts(
     annotations: dict[date, list[str]] | None = None,
     display_window: int | None = 26,
     days_off: int = 0,
+    start_date: date | None = None,
     target_date: date | None = None,
     unplanned_ratio: float = 0.0,
     uniform_size: float | None = None,
@@ -374,6 +385,7 @@ def make_charts(
 
     n_sim         = len(weeks_arr)
     pct_delivered = 100 * np.sum(weeks_arr <= n_weeks) / n_sim
+    sim_start     = start_date if start_date is not None else date.today()
 
     plt.rcParams.update({
         "text.color":       C_TEXT,
@@ -458,6 +470,7 @@ def make_charts(
     _draw_weeks_histogram(
         ax1, s, weeks_arr=weeks_arr, n_weeks=n_weeks,
         certainties=certainties, pct_delivered=pct_delivered, n_sim=n_sim,
+        start_date=sim_start,
     )
 
     _draw_volume_histogram(

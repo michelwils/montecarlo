@@ -31,7 +31,6 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "display_all":       "all",
         "none_val":          "none",
         "weeks_abbr":        "w.",        # long form (e.g. "12 w.")
-        "weeks_short":       "w",         # short form used inside labels (e.g. "3.0w")
         "days_abbr":         "d.",
         # Size names (must parallel SCORES key order)
         "size_tiny":         "X-Small",
@@ -41,9 +40,9 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "size_xlarge":       "X-Large",
         # Chart 1 — weeks distribution
         "ax1_title":         "Distribution of weeks required\n({pct:.1f}% of {n:,} simulations reach the target)",
-        "ax1_xlabel":        "Weeks required to deliver the target",
+        "ax1_xlabel":        "Estimated delivery date",
         "ax1_ylabel":        "Number of simulations",
-        "ax1_objective":     "Target\n{n}w",
+        "ax1_objective":     "Target\n{date}",
         # Chart 2 — volume distribution
         "ax2_title":         "Volume delivered in {n_weeks} weeks ({n_workdays} work days)\n({pct:.1f}% of {n:,} simulations reach the target)",
         "ax2_xlabel":        "Points delivered in {n_weeks} weeks",
@@ -115,7 +114,6 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "display_all":       "tout",
         "none_val":          "aucun",
         "weeks_abbr":        "sem.",
-        "weeks_short":       "s",
         "days_abbr":         "j.",
         # Noms des tailles (parallèle aux clés de SCORES)
         "size_tiny":         "Très petit",
@@ -125,9 +123,9 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "size_xlarge":       "Très grand",
         # Graphique 1 — distribution des semaines
         "ax1_title":         "Distribution du nombre de semaines requises\n({pct:.1f} % des {n:,} simulations atteignent la cible)",
-        "ax1_xlabel":        "Semaines requises pour livrer la cible",
+        "ax1_xlabel":        "Date de livraison estimée",
         "ax1_ylabel":        "Nombre de simulations",
-        "ax1_objective":     "Objectif\n{n}s",
+        "ax1_objective":     "Objectif\n{date}",
         # Graphique 2 — distribution du volume
         "ax2_title":         "Distribution du volume livré en {n_weeks} semaines ({n_workdays} j. trav.)\n({pct:.1f} % des {n:,} simulations atteignent la cible)",
         "ax2_xlabel":        "Points livrés en {n_weeks} semaines",
