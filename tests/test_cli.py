@@ -1,4 +1,5 @@
 import io
+import re
 from datetime import date
 from pathlib import Path
 
@@ -481,6 +482,45 @@ class TestMainEndToEnd:
         files = list(tmp_path.glob("*.png"))
         assert len(files) == 1
         assert files[0].name.startswith("my_prefix_")
+
+    def test_default_filename_includes_date_target_and_probability(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "-f", SAMPLE_KANBAN_CSV,
+            "-s", "5", "-w", "8", "-n", "200",
+            "-o", str(tmp_path),
+        ])
+        main()
+        files = list(tmp_path.glob("*.png"))
+        assert len(files) == 1
+        assert re.match(
+            r"^monte_carlo_\d{4}-\d{2}-\d{2}_\d+(\.\d+)?pts_\d+pct_\d{8}_\d{6}\.png$",
+            files[0].name,
+        )
+
+    def test_custom_filename_format_is_applied(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "-f", SAMPLE_KANBAN_CSV,
+            "-s", "5", "-w", "8", "-n", "200",
+            "--filename-format", "{weeks}w_{simulations}sims",
+            "-o", str(tmp_path),
+        ])
+        main()
+        files = list(tmp_path.glob("*.png"))
+        assert len(files) == 1
+        assert files[0].name == "8w_200sims.png"
+
+    def test_unknown_filename_placeholder_is_rejected(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py",
+            "-f", SAMPLE_KANBAN_CSV,
+            "-s", "5", "-w", "8",
+            "--filename-format", "{bogus}",
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
 
     def test_configs_runs_each_file_with_its_own_prefix(self, tmp_path, monkeypatch, capsys):
         config_a = tmp_path / "team_a.conf"

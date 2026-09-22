@@ -12,6 +12,7 @@ matplotlib.use("Agg")
 
 from .constants import DEFAULT_OUTPUT_DIR
 from .loaders import get_loader, load_throughput_auto
+from .naming import DEFAULT_FILENAME_FORMAT, render_filename
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
 from .theme import (
@@ -373,6 +374,7 @@ def make_charts(
     lang: str = "en",
     output_dir: str = DEFAULT_OUTPUT_DIR,
     output_prefix: str = "monte_carlo",
+    filename_format: str | None = None,
     title: str | None = None,
     description: str | None = None,
 ) -> None:
@@ -492,10 +494,20 @@ def make_charts(
         unplanned_ratio=unplanned_ratio, uniform_size=uniform_size,
     )
 
-    ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target_calendar_date = target_date if target_date is not None else sim_start + timedelta(weeks=n_weeks)
+    stem = render_filename(
+        filename_format or DEFAULT_FILENAME_FORMAT,
+        prefix=output_prefix,
+        date=target_calendar_date,
+        target=target_score,
+        prob=pct_delivered,
+        timestamp=datetime.now(),
+        weeks=n_weeks,
+        simulations=n_simulations,
+    )
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
-    out = (out_path / f"{output_prefix}_{ts}.png").resolve()
+    out = (out_path / f"{stem}.png").resolve()
     plt.savefig(out, dpi=150, bbox_inches="tight", facecolor=BG)
     plt.close()
     print(f"✅ {s['console_chart_saved'].format(path=out)}")

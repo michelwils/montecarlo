@@ -26,6 +26,7 @@ from .kanbanzone_api import (
     write_cards_as_csv,
 )
 from .loaders import LOADERS, get_loader, load_throughput_auto
+from .naming import DEFAULT_FILENAME_FORMAT, validate_filename_format
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
 
@@ -292,6 +293,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-P", "--output-prefix", type=str, default=None,
                    help="Prefix for the generated chart's filename (default: 'monte_carlo', "
                         "or the config file's own name when using --configs)")
+    _filename_format_help = (
+        "Template for the generated chart's filename (without extension). "
+        "Placeholders: {prefix} {date} {target} {prob} {timestamp} {weeks} "
+        "{simulations} — date/target/prob/weeks/simulations are the target "
+        "delivery date, target volume, delivery probability, simulation "
+        "duration and simulation count; all support Python format specs, "
+        "e.g. {target:.0f} or {timestamp:%Y%m%d} "
+        f"(default: '{DEFAULT_FILENAME_FORMAT}')"
+    ).replace("%", "%%")  # argparse help strings are themselves %-formatted
+    p.add_argument("--filename-format", type=str, default=None, metavar="TEMPLATE",
+                   help=_filename_format_help)
     p.add_argument("--configs", type=str, nargs="+", default=None, metavar="FILE",
                    help="Run each of these @config files as a separate simulation in one "
                         "invocation. Combine with other flags on the command line to apply "
@@ -333,6 +345,11 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
 
     if not (0.0 <= args.unplanned_ratio < 1.0):
         parser.error("--unplanned-ratio must be between 0 and 1 (exclusive of 1)")
+
+    filename_format = args.filename_format or DEFAULT_FILENAME_FORMAT
+    format_error = validate_filename_format(filename_format)
+    if format_error is not None:
+        parser.error(f"--filename-format: {format_error}")
 
     window_start, window_end = resolve_window(args, parser)
     fpath, board_cards = resolve_data_file(args, s)
@@ -475,6 +492,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             lang=args.lang,
             output_dir=args.output_dir,
             output_prefix=args.output_prefix or "monte_carlo",
+            filename_format=filename_format,
             title=args.title,
             description=args.description,
         )

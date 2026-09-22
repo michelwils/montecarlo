@@ -84,6 +84,7 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 | `-a` | `--annotations`   | auto-detect   | CSV annotations file (see below) |
 | `-o` | `--output-dir`    | `output`      | Directory for generated charts |
 | `-P` | `--output-prefix` | `monte_carlo` | Filename prefix for the generated chart (defaults to the config file's own name with `--configs`) |
+|      | `--filename-format` | see below   | Template for the generated chart's filename, without extension (see below) |
 |      | `--configs`       | none          | Run each of these `@`config files as a separate simulation in one invocation (see below) |
 |      | `--lang`          | `en`          | Chart language: `en` or `fr` |
 | `-T` | `--title`         | language default | Custom chart title |
@@ -101,6 +102,31 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 | X-Large    | Très grand | 8   |
 
 Both columns are accepted wherever an item size is read from a data file (`CF Size`/`CF Envergure` values) — see `ALL_SCORES` in `montecarlo/constants.py`.
+
+### Chart filename
+
+By default the generated chart's filename summarizes the run:
+
+```
+monte_carlo_2026-11-23_5pts_100pct_20260922_095207.png
+ prefix     date        target prob  timestamp
+```
+
+The timestamp is always kept last so a plain directory listing still sorts repeated runs chronologically. Override the whole scheme with `--filename-format`, using any of these placeholders (all support [Python format specs](https://docs.python.org/3/library/string.html#format-specification-mini-language), e.g. `{target:.0f}` or `{timestamp:%Y%m%d}`):
+
+| Placeholder | Value |
+|---|---|
+| `{prefix}` | `-P/--output-prefix` |
+| `{date}` | Target delivery date (`-e/--target-date`, or start date + `-w/--weeks` when no target date is given) |
+| `{target}` | Target volume (points) |
+| `{prob}` | Probability (%) of delivering the target within the simulated duration |
+| `{timestamp}` | Chart generation time |
+| `{weeks}` | Simulation duration in weeks |
+| `{simulations}` | Number of Monte Carlo simulations (`-n`) |
+
+```
+--filename-format "{timestamp:%Y%m%d_%H%M%S}_{weeks}w_{simulations}sims"
+```
 
 ---
 
