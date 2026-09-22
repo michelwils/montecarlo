@@ -28,6 +28,8 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         # Parameters panel values
         "window_full":       "full",
         "window_range":      "{start} to {end}",
+        "window_since":      "{start} onward",
+        "window_until":      "through {end}",
         "display_all":       "all",
         "none_val":          "none",
         "weeks_abbr":        "w.",        # long form (e.g. "12 w.")
@@ -111,6 +113,8 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         # Valeurs du panneau de paramètres
         "window_full":       "complète",
         "window_range":      "{start} au {end}",
+        "window_since":      "depuis le {start}",
+        "window_until":      "jusqu'au {end}",
         "display_all":       "tout",
         "none_val":          "aucun",
         "weeks_abbr":        "sem.",

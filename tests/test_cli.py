@@ -195,11 +195,15 @@ class TestResolveWindow:
         with pytest.raises(SystemExit):
             resolve_window(args, parser)
 
-    def test_start_without_end_exits(self):
+    def test_start_without_end_defaults_end_to_none(self):
         parser = build_parser()
         args = parser.parse_args(["-w", "1", "--window-start", "2026-01-01"])
-        with pytest.raises(SystemExit):
-            resolve_window(args, parser)
+        assert resolve_window(args, parser) == (date(2026, 1, 1), None)
+
+    def test_end_without_start_defaults_start_to_none(self):
+        parser = build_parser()
+        args = parser.parse_args(["-w", "1", "--window-end", "2026-01-31"])
+        assert resolve_window(args, parser) == (None, date(2026, 1, 31))
 
     def test_invalid_date_format_exits(self):
         parser = build_parser()
@@ -395,13 +399,18 @@ class TestMainValidation:
             main()
         assert exc.value.code == 2
 
-    def test_window_start_requires_window_end(self, monkeypatch):
+    def test_window_start_without_end_runs_through_latest_data(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setattr("sys.argv", [
-            "monte_carlo.py", "-s", "5", "-w", "8", "--window-start", "2026-01-01",
+            "monte_carlo.py",
+            "-f", SAMPLE_KANBAN_CSV,
+            "-s", "5", "-w", "8",
+            "--window-start", "2026-01-01",
+            "-n", "200",
+            "-o", str(tmp_path),
         ])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 2
+        main()
+        out = capsys.readouterr().out
+        assert "2026-01-01 onward" in out
 
     def test_invalid_window_start_format_rejected(self, monkeypatch):
         monkeypatch.setattr("sys.argv", [

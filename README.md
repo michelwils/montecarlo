@@ -67,8 +67,8 @@ The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.pn
 | `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks (or use `-e`) |
 | `-e` | `--target-date`   | none          | Target delivery date (`YYYY-MM-DD`) instead of `-w`; weeks = ceil((target − start) / 7 days) |
 | `-W` | `--window`        | all           | Most recent N history weeks to use |
-|      | `--window-start`  | none          | First completion date included in history (`YYYY-MM-DD`; use with `--window-end`, not with `-W`) |
-|      | `--window-end`    | none          | Last completion date included in history (`YYYY-MM-DD`; use with `--window-start`, not with `-W`) |
+|      | `--window-start`  | none          | First completion date included in history (`YYYY-MM-DD`; not with `-W`). Without `--window-end`, runs through the latest available date |
+|      | `--window-end`    | none          | Last completion date included in history (`YYYY-MM-DD`; not with `-W`). Without `--window-start`, starts from the earliest available date |
 | `-G` | `--chart-weeks`   | `26`          | Weeks shown in the sensitivity chart (0 = all) |
 | `-t` | `--tiny`          | `0`           | Number of *X-Small* items (0.5 pt) |
 | `-s` | `--small`         | `0`           | Number of *Small* items (1 pt) |

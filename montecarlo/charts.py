@@ -443,6 +443,10 @@ def make_charts(
 
     if window_start is not None and window_end is not None:
         fenetre_str = s["window_range"].format(start=window_start, end=window_end)
+    elif window_start is not None:
+        fenetre_str = s["window_since"].format(start=window_start)
+    elif window_end is not None:
+        fenetre_str = s["window_until"].format(end=window_end)
     else:
         fenetre_str = s["window_full"] if window_weeks is None else f"{window_weeks} {s['weeks_abbr']}"
     display_str     = s["display_all"] if display_window is None else f"{display_window} {s['weeks_abbr']}"

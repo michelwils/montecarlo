@@ -64,12 +64,12 @@ def resolve_window(
 ) -> tuple[date | None, date | None]:
     """
     Validate --window vs. --window-start/--window-end and parse the
-    latter into dates. Calls parser.error() (which prints usage and
-    exits) on any invalid combination or format.
+    latter into dates. Either of --window-start/--window-end may be
+    given on its own: an open end defaults to the last available
+    history date, an open start to the first. Calls parser.error()
+    (which prints usage and exits) on any invalid combination or format.
     """
-    if (args.window_start is None) != (args.window_end is None):
-        parser.error("--window-start and --window-end must be used together")
-    if args.window is not None and args.window_start is not None:
+    if args.window is not None and (args.window_start is not None or args.window_end is not None):
         parser.error("--window cannot be used with --window-start/--window-end")
 
     window_start = parse_date(args.window_start) if args.window_start else None
@@ -248,9 +248,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-W", "--window", type=int, default=None,
                    help="Number of most recent history weeks to use (default: all)")
     p.add_argument("--window-start", type=str, default=None,
-                   help="First completion date included in historical data (YYYY-MM-DD)")
+                   help="First completion date included in historical data (YYYY-MM-DD); "
+                        "if --window-end is omitted, data runs through the latest available date")
     p.add_argument("--window-end", type=str, default=None,
-                   help="Last completion date included in historical data (YYYY-MM-DD)")
+                   help="Last completion date included in historical data (YYYY-MM-DD); "
+                        "if --window-start is omitted, data starts from the earliest available date")
     p.add_argument("-G", "--chart-weeks", type=int, default=26,
                    metavar="N",
                    help="Weeks shown in the bottom chart (default: 26 ≈ 6 months, 0 = all)")
@@ -397,6 +399,10 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         print(f"   {s['param_unplanned']:<{label_width}}: {unplanned_str}")
         if window_start is not None and window_end is not None:
             history_window = s["window_range"].format(start=window_start, end=window_end)
+        elif window_start is not None:
+            history_window = s["window_since"].format(start=window_start)
+        elif window_end is not None:
+            history_window = s["window_until"].format(end=window_end)
         elif args.window is None:
             history_window = s["window_full"]
         else:
