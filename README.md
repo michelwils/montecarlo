@@ -171,7 +171,7 @@ Custom field names are set per-board, so English names are accepted, along with 
 
 Calendar weeks with no completions between the first and last delivered item count as 0 pts of throughput — they are not skipped. Omitting them would silently inflate the average throughput and destabilize the sensitivity chart's small history windows.
 
-If an optional `CF Exception` (or `CF Prioritaire`) column is present, cards flagged `true` are excluded from throughput entirely. These are Kanban Zone's exceptions that bypass the normal planning process (ad hoc / unplanned work) — since the simulation's target is built only from planned items, counting historical ad hoc work would overstate how much capacity is actually available for what you're forecasting.
+If an optional `CF Exception` (or `CF Prioritaire`) column is present, flagged cards are excluded from throughput entirely — any value other than an explicit "no" (`false`, `non`, `0`, or empty) counts as flagged, since the field isn't always a plain boolean: on some boards it's a multi-select reason tag (e.g. `Doublon`, `Incomplet`, `Annulé`, `Abandonné`, `Reporté`) rather than `true`/`false`. These are Kanban Zone's exceptions that bypass the normal planning process (ad hoc / unplanned work) — since the simulation's target is built only from planned items, counting historical ad hoc work would overstate how much capacity is actually available for what you're forecasting.
 
 **Example file:** `exemples/kanban_zone.csv`
 

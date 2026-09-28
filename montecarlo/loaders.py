@@ -97,7 +97,13 @@ def _apply_window_weeks(
 # own team's board actually uses.
 _SIZE_COLUMNS      = ("CF Size", "CF Envergure")
 _UNPLANNED_COLUMNS = ("CF Exception", "CF Prioritaire")
-_UNPLANNED_TRUTHY  = {"true", "1", "yes", "oui"}
+# 'CF Exception' isn't always a boolean checkbox — on some boards it's a
+# multi-select reason tag ('Doublon', 'Incomplet', 'Annulé', 'Abandonné',
+# 'Reporté'...), whose exported value looks like "['Doublon']" rather than
+# "true". Enumerating every possible tag would be brittle, so instead any
+# value other than an explicit "no" is treated as flagged — a denylist
+# instead of an allowlist.
+_UNPLANNED_FALSY = {"", "false", "non", "0"}
 
 
 def _get_field(row: dict[str, str], columns: tuple[str, ...]) -> str:
@@ -117,7 +123,7 @@ def _is_unplanned(row: dict[str, str]) -> bool:
     in advance, so they are excluded from the throughput used to project
     planned work.
     """
-    return _get_field(row, _UNPLANNED_COLUMNS).lower() in _UNPLANNED_TRUTHY
+    return _get_field(row, _UNPLANNED_COLUMNS).lower() not in _UNPLANNED_FALSY
 
 
 class KanbanZoneCSVLoader(ThroughputLoader):

@@ -282,6 +282,16 @@ class TestIsUnplanned:
     def test_truthy_values(self, value):
         assert _is_unplanned({"CF Prioritaire": value}) is True
 
+    @pytest.mark.parametrize(
+        "value", ["['Doublon']", "['Incomplet']", "Annulé", "Abandonné", "Reporté"]
+    )
+    def test_multiselect_reason_tags_are_unplanned(self, value):
+        # On some boards 'CF Exception' is a multi-select reason field
+        # rather than a boolean checkbox — its exported value is a tag
+        # (or a Python-list repr of one), never "true"/"oui". Any such
+        # non-empty, non-"no" value still means the card is an exception.
+        assert _is_unplanned({"CF Exception": value}) is True
+
     @pytest.mark.parametrize("value", ["", "false", "non", "0", "  "])
     def test_falsy_values(self, value):
         assert _is_unplanned({"CF Prioritaire": value}) is False
