@@ -47,7 +47,7 @@ python monte_carlo.py -p 42 -e 2026-12-15 -v 5 -c 80 90 --lang fr
 python monte_carlo.py --formats
 ```
 
-The chart is saved in the `output/` directory as `monte_carlo_YYYYMMDD_HHMMSS.png` (override the directory with `-o/--output-dir`, the `monte_carlo` prefix with `-P/--output-prefix`).
+The chart is saved in the `output/` directory as `monte_carlo - livr YYYY-MM-DD - gen YYYY-MM-DD HHhMM - N pts - P pct.png` (see [Chart filename](#chart-filename); override the directory with `-o/--output-dir`, the `monte_carlo` prefix with `-P/--output-prefix`).
 
 ![Sample report](exemples/sample_report.png)
 
@@ -108,11 +108,11 @@ Both columns are accepted wherever an item size is read from a data file (`CF Si
 By default the generated chart's filename summarizes the run:
 
 ```
-monte_carlo_2026-11-23_5pts_100pct_20260922_095207.png
- prefix     date        target prob  timestamp
+monte_carlo - livr 2026-11-23 - gen 2026-09-22 09h52 - 5 pts - 100 pct.png
+ prefix           delivery date    generation time      target  prob
 ```
 
-The timestamp is always kept last so a plain directory listing still sorts repeated runs chronologically. Override the whole scheme with `--filename-format`, using any of these placeholders (all support [Python format specs](https://docs.python.org/3/library/string.html#format-specification-mini-language), e.g. `{target:.0f}` or `{timestamp:%Y%m%d}`):
+Fields are separated by ` - `, and both dates use the same ISO format with a short label (`livr` = delivery, `gen` = generation). The generation time comes right after the delivery date, before the target volume and probability: since the target volume varies from one week to the next, this keeps a plain directory listing grouped by delivery date and sorted chronologically within it. The time has minute resolution, so rerunning the same config within the same minute overwrites the previous chart. Override the whole scheme with `--filename-format`, using any of these placeholders (all support [Python format specs](https://docs.python.org/3/library/string.html#format-specification-mini-language), e.g. `{target:.0f}` or `{timestamp:%Y%m%d}`):
 
 | Placeholder | Value |
 |---|---|

@@ -481,7 +481,7 @@ class TestMainEndToEnd:
         main()
         files = list(tmp_path.glob("*.png"))
         assert len(files) == 1
-        assert files[0].name.startswith("my_prefix_")
+        assert files[0].name.startswith("my_prefix - ")
 
     def test_default_filename_includes_date_target_and_probability(self, tmp_path, monkeypatch):
         monkeypatch.setattr("sys.argv", [
@@ -494,7 +494,8 @@ class TestMainEndToEnd:
         files = list(tmp_path.glob("*.png"))
         assert len(files) == 1
         assert re.match(
-            r"^monte_carlo_\d{4}-\d{2}-\d{2}_\d+(\.\d+)?pts_\d+pct_\d{8}_\d{6}\.png$",
+            r"^monte_carlo - livr \d{4}-\d{2}-\d{2} - gen \d{4}-\d{2}-\d{2} \d{2}h\d{2}"
+            r" - \d+(\.\d+)? pts - \d+ pct\.png$",
             files[0].name,
         )
 
@@ -545,8 +546,8 @@ class TestMainEndToEnd:
 
         files = sorted(p.name for p in out_dir.glob("*.png"))
         assert len(files) == 2
-        assert files[0].startswith("team_a_")
-        assert files[1].startswith("team_b_")
+        assert files[0].startswith("team_a - ")
+        assert files[1].startswith("team_b - ")
 
     def test_configs_with_explicit_prefix_applies_to_all_runs(self, tmp_path, monkeypatch, capsys):
         config_a = tmp_path / "team_a.conf"
@@ -564,7 +565,7 @@ class TestMainEndToEnd:
         main()
         files = sorted(p.name for p in out_dir.glob("*.png"))
         assert len(files) == 2
-        assert all(f.startswith("shared_name_") for f in files)
+        assert all(f.startswith("shared_name - ") for f in files)
 
     def test_runs_from_the_api_and_cleans_up_the_temp_file(self, tmp_path, monkeypatch, capsys):
         cards = [

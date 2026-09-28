@@ -2,10 +2,16 @@
 import re
 from datetime import date, datetime
 
-# Timestamp kept last (as it always was) so that, for a fixed
-# prefix/date/target/prob combination, listing a directory alphabetically
-# still orders repeated runs chronologically.
-DEFAULT_FILENAME_FORMAT = "{prefix}_{date}_{target:g}pts_{prob:.0f}pct_{timestamp:%Y%m%d_%H%M%S}"
+# Fields are separated by " - ", which never occurs inside a value (prefixes
+# and dates use "_" and "-"), and both dates share the ISO format, labelled
+# so they can't be confused. Timestamp placed right after the delivery date,
+# ahead of target/prob: the target volume changes from week to week as the
+# backlog evolves, so keeping it out of the sort key lets an alphabetical
+# listing group runs by prefix and delivery date, then order them
+# chronologically. Minute resolution: a rerun of the same config within the
+# same minute overwrites the previous chart.
+DEFAULT_FILENAME_FORMAT = ("{prefix} - livr {date} - gen {timestamp:%Y-%m-%d %Hh%M}"
+                           " - {target:g} pts - {prob:.0f} pct")
 
 # Real types matching what render_filename() is called with at chart-save
 # time, so a bad format spec (e.g. {target:%Y}) is caught while validating

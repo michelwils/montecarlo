@@ -37,7 +37,7 @@ class TestRenderFilename:
             weeks=8,
             simulations=200,
         )
-        assert stem == "monte_carlo_2026-11-23_5pts_100pct_20260922_095207"
+        assert stem == "monte_carlo - livr 2026-11-23 - gen 2026-09-22 09h52 - 5 pts - 100 pct"
 
     def test_custom_template_with_own_format_specs(self):
         stem = render_filename(
