@@ -45,7 +45,7 @@ import tempfile
 import urllib.error
 import urllib.request
 
-from .constants import ALL_SCORES
+from .constants import ALL_SCORES, SIZE_TIERS
 from .loaders import _SIZE_COLUMNS, _get_field
 
 BASE_URL = "https://integrations.kanbanzone.io/v1"
@@ -164,6 +164,15 @@ def write_cards_as_csv(cards: list[dict]) -> str:
     return path
 
 
+def _card_size(card: dict) -> str:
+    """The card's CF Size/CF Envergure value, or "" if it has none."""
+    row = {
+        f"CF {(cf.get('label') or '').strip()}": str(cf.get("value", ""))
+        for cf in card.get("customFields") or []
+    }
+    return _get_field(row, _SIZE_COLUMNS)
+
+
 def _card_size_points(card: dict, uniform_size: float | None) -> float | None:
     """
     Points for one card, or None if it can't be sized: no CF Size/CF
@@ -172,12 +181,15 @@ def _card_size_points(card: dict, uniform_size: float | None) -> float | None:
     """
     if uniform_size is not None:
         return uniform_size
-    row = {
-        f"CF {(cf.get('label') or '').strip()}": str(cf.get("value", ""))
-        for cf in card.get("customFields") or []
-    }
-    size = _get_field(row, _SIZE_COLUMNS)
-    return ALL_SCORES.get(size)
+    return ALL_SCORES.get(_card_size(card))
+
+
+def _active_cards_in(cards: list[dict], states: set[str]) -> list[dict]:
+    """Non-archived cards whose columnState is one of `states`."""
+    return [
+        card for card in cards
+        if not card.get("archivedAt") and card.get("columnState") in states
+    ]
 
 
 def compute_board_target(
@@ -216,11 +228,7 @@ def compute_board_target(
         points = 0.0
         matched = 0
         skipped = 0
-        for card in cards:
-            if card.get("archivedAt"):
-                continue
-            if card.get("columnState") not in states:
-                continue
+        for card in _active_cards_in(cards, states):
             card_points = _card_size_points(card, uniform_size)
             if card_points is None:
                 skipped += 1
@@ -229,3 +237,28 @@ def compute_board_target(
             matched += 1
         result[key] = (points, matched, skipped)
     return result
+
+
+def count_board_sizes(
+    cards: list[dict],
+    include_todo: bool,
+    include_wip: bool,
+) -> dict[str, int]:
+    """
+    Count the cards compute_board_target() would size, per canonical
+    SCORES tier ("Small", "Medium"...), across the requested to-do/WIP
+    categories combined — so the chart can show the target's mix by
+    size instead of a bare point total. Cards with no recognizable
+    size are left out, as they are from the points.
+    """
+    states: set[str] = set()
+    if include_todo:
+        states |= _TODO_STATES
+    if include_wip:
+        states |= _WIP_STATES
+    counts: dict[str, int] = {}
+    for card in _active_cards_in(cards, states):
+        tier = SIZE_TIERS.get(_card_size(card))
+        if tier is not None:
+            counts[tier] = counts.get(tier, 0) + 1
+    return counts

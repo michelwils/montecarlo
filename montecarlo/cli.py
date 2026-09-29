@@ -22,6 +22,7 @@ from .dates import next_monday, parse_date
 from .kanbanzone_api import (
     KanbanZoneAPIError,
     compute_board_target,
+    count_board_sizes,
     fetch_cards,
     write_cards_as_csv,
 )
@@ -333,6 +334,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
 
     target_score = compute_target_score(args)
     board_breakdown: dict[str, tuple[float, int, int]] = {}
+    board_sizes: dict[str, int] | None = None
     # A manual mix of 0 is normally a mistake (help + exit below), unless
     # --include-todo/--include-wip will add to it once the board is
     # fetched — so that check waits until after resolve_data_file() runs.
@@ -362,6 +364,8 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             board_cards, args.include_todo, args.include_wip, args.uniform_size
         )
         target_score += sum(pts for pts, _matched, _skipped in board_breakdown.values())
+        if args.uniform_size is None:
+            board_sizes = count_board_sizes(board_cards, args.include_todo, args.include_wip)
         if target_score == 0:
             parser.print_help()
             sys.exit(1)
@@ -487,6 +491,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
             xlarge=args.xlarge, points=args.points,
             board_todo=board_breakdown.get("todo"), board_wip=board_breakdown.get("wip"),
+            board_sizes=board_sizes,
             annot_file=args.annotations,
             n_simulations=args.simulations,
             lang=args.lang,

@@ -75,9 +75,10 @@ def _draw_params_panel(
 
     n_params  = len(params)
     mix_lines = mix_str.count("\n") + 1
-    # 0.012 * 12 is the label→value line height in row units (see offset below);
-    # extra Mix lines each cost one such line, not a full row's worth of padding.
-    line_unit = 0.012 * 12
+    # Height of one 8.5pt text line in row units (a row is ~86 px on the
+    # 1920x1080 figure, a text line ~21 px); extra Mix lines each cost one
+    # such line, not a full row's worth of padding.
+    line_unit = 0.25
     extra     = (mix_lines - 1) * line_unit
     n_slots   = n_params + extra  # multi-line Mix consumes extra vertical space
 
@@ -369,6 +370,7 @@ def make_charts(
     points: int = 0,
     board_todo: tuple[float, int, int] | None = None,
     board_wip: tuple[float, int, int] | None = None,
+    board_sizes: dict[str, int] | None = None,
     annot_file: str | None = None,
     n_simulations: int = 10_000,
     lang: str = "en",
@@ -417,19 +419,28 @@ def make_charts(
         fig.text(0.5, 0.955, description, ha="center", va="top",
                   fontsize=9.5, color=C_SUBTEXT)
 
+    # Board cards read by size (board_sizes) are merged into the manual
+    # -t/-s/-m/-l/-x counts, so the Mix shows one line per size rather
+    # than a bare "N pts to do/WIP" total. Without board_sizes (e.g.
+    # --uniform-size, where cards have no size), fall back to that total.
+    size_counts = {"X-Small": tiny, "Small": small, "Medium": medium,
+                   "Large": large, "X-Large": xlarge}
+    for tier, n in (board_sizes or {}).items():
+        size_counts[tier] += n
     mix_parts = []
-    if tiny:   mix_parts.append(f"{tiny} × {s['size_tiny']}")
-    if small:  mix_parts.append(f"{small} × {s['size_small']}")
-    if medium: mix_parts.append(f"{medium} × {s['size_medium']}")
-    if large:  mix_parts.append(f"{large} × {s['size_large']}")
-    if xlarge: mix_parts.append(f"{xlarge} × {s['size_xlarge']}")
+    for tier, key in (("X-Small", "size_tiny"), ("Small", "size_small"),
+                      ("Medium", "size_medium"), ("Large", "size_large"),
+                      ("X-Large", "size_xlarge")):
+        if size_counts[tier]:
+            mix_parts.append(f"{size_counts[tier]} × {s[key]}")
     if points: mix_parts.append(f"{points} pts")
-    if board_todo is not None:
-        pts, matched, _skipped = board_todo
-        mix_parts.append(s["mix_board_todo"].format(n=f"{pts:g}", count=matched))
-    if board_wip is not None:
-        pts, matched, _skipped = board_wip
-        mix_parts.append(s["mix_board_wip"].format(n=f"{pts:g}", count=matched))
+    if board_sizes is None:
+        if board_todo is not None:
+            pts, matched, _skipped = board_todo
+            mix_parts.append(s["mix_board_todo"].format(n=f"{pts:g}", count=matched))
+        if board_wip is not None:
+            pts, matched, _skipped = board_wip
+            mix_parts.append(s["mix_board_wip"].format(n=f"{pts:g}", count=matched))
     if not mix_parts:
         mix_str = "—"
     elif len(mix_parts) == 1:

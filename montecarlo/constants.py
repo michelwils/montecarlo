@@ -13,6 +13,10 @@ SCORES_FR = {"Très petit": 0.5, "Petit": 1, "Moyen": 3, "Grand": 5, "Très gran
 # files — accepts either language, regardless of which column name matched.
 ALL_SCORES: dict[str, float] = {**SCORES, **SCORES_FR}
 
+# Maps a size value in either language to its canonical SCORES key, so
+# counts read from a board can be merged with the -t/-s/-m/-l/-x mix.
+SIZE_TIERS: dict[str, str] = {**{k: k for k in SCORES}, **dict(zip(SCORES_FR, SCORES))}
+
 N_SIMULATIONS = 10_000
 DEFAULT_FILE             = "data/kanban_zone.csv"
 DEFAULT_THROUGHPUT_TXT   = "data/Throughput.txt"

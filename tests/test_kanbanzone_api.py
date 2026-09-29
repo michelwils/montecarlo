@@ -10,6 +10,7 @@ from montecarlo.kanbanzone_api import (
     KanbanZoneAPIError,
     cards_to_csv_rows,
     compute_board_target,
+    count_board_sizes,
     fetch_cards,
     write_cards_as_csv,
 )
@@ -248,3 +249,30 @@ class TestComputeBoardTarget:
         cards = [_card("Backlog", "Très grand")]
         result = compute_board_target(cards, include_todo=True, include_wip=False)
         assert result == {"todo": (0.0, 0, 0)}
+
+
+class TestCountBoardSizes:
+    def test_counts_todo_and_wip_by_canonical_tier(self):
+        cards = [
+            _card("Start", "Petit"),
+            _card("In Progress", "Petit"),
+            _card("Buffer", "Grand"),
+            {"columnState": "Start", "customFields": [{"label": "Size", "value": "Small"}]},
+        ]
+        assert count_board_sizes(cards, include_todo=True, include_wip=True) == {
+            "Small": 3, "Large": 1,
+        }
+
+    def test_only_requested_categories_are_counted(self):
+        cards = [_card("Start", "Petit"), _card("In Progress", "Grand")]
+        assert count_board_sizes(cards, include_todo=False, include_wip=True) == {"Large": 1}
+
+    def test_unsized_archived_and_other_states_are_left_out(self):
+        cards = [
+            _card("Start", None),
+            _card("Start", "not-a-size"),
+            _card("Start", "Moyen", archived_at="2026-01-01T00:00:00.000Z"),
+            _card("Backlog", "Moyen"),
+            _card("Done", "Moyen"),
+        ]
+        assert count_board_sizes(cards, include_todo=True, include_wip=True) == {}
