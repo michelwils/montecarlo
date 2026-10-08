@@ -62,6 +62,7 @@ The chart is saved in the `output/` directory as `monte_carlo - livr YYYY-MM-DD 
 |      | `--api-key`       | none          | API key for `--board` (prefer the `KANBAN_ZONE_API_KEY` env var) |
 |      | `--include-archived` | off        | With `--board`, also fetch archived cards |
 |      | `--include-todo`  | off           | Add committed, queued-to-start cards (Kanban Zone's `Start` column state — not `Backlog`) to the target, computed from the board itself. Requires `--board` (see below) |
+|      | `--include-backlog` | off         | Also add the uncommitted `Backlog` cards to the target. Requires `--board` (see below) |
 |      | `--include-wip`   | off           | Add in-progress cards (`In Progress`/`Buffer` column states, i.e. WIP) to the target, computed from the board itself. Requires `--board` (see below) |
 | `-U` | `--uniform-size`  | none          | Count every completed card as this many points instead of reading `CF Size`/`CF Envergure` — for boards with no size field (see below) |
 | `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks (or use `-e`) |
@@ -213,16 +214,17 @@ Requires an [API key](https://kanbanzone.com/2019/integrate-with-kanban-zones-ap
 
 #### Deriving the target from the board itself
 
-Instead of entering the scope by hand (`-t/-s/-m/-l/-x/-p`), `--include-todo` and `--include-wip` sum the point value of cards currently on the board, using each card's own `CF Size`/`CF Envergure` value (or `-U/--uniform-size`, for a board with no size field):
+Instead of entering the scope by hand (`-t/-s/-m/-l/-x/-p`), `--include-todo`, `--include-wip` and `--include-backlog` sum the point value of cards currently on the board, using each card's own `CF Size`/`CF Envergure` value (or `-U/--uniform-size`, for a board with no size field):
 
 ```bash
 python monte_carlo.py --board <boardPublicId> --include-todo --include-wip -w 8
 ```
 
-- `--include-todo` — cards committed and queued to start soon (Kanban Zone's normalized `Start` column state; not `Backlog`, which is an uncommitted, not-yet-scheduled pool and is deliberately excluded)
+- `--include-todo` — cards committed and queued to start soon (Kanban Zone's normalized `Start` column state; not `Backlog`, which has its own flag below)
 - `--include-wip` — cards already in progress (`In Progress`/`Buffer` column states, together forming WIP)
+- `--include-backlog` — cards in the uncommitted, not-yet-scheduled `Backlog` column state. Opt-in because that pool isn't necessarily work the team plans to do within the forecast horizon
 
-Use either one alone to forecast just that slice of work (e.g. "how long to clear what's already in progress"), or both together for the full remaining scope. Both add to, rather than replace, any manually-specified `-t/-s/-m/-l/-x/-p`/`-p`. A card whose column state doesn't match either option (e.g. `Done`, `Archive`) is never counted, and a card that's been archived is always excluded from both, regardless of the column it's sitting in — `--include-archived` widens historical throughput to completed-but-archived cards, it doesn't mean an archived (e.g. cancelled) card should still count as scope. A matching card with no readable size is skipped and reported as a warning, the same way an unsized card is skipped from throughput.
+Use any of them alone to forecast just that slice of work (e.g. "how long to clear what's already in progress"), or combine them for the full remaining scope. They all add to, rather than replace, any manually-specified `-t/-s/-m/-l/-x/-p`/`-p`. A card whose column state doesn't match either option (e.g. `Done`, `Archive`) is never counted, and a card that's been archived is always excluded from both, regardless of the column it's sitting in — `--include-archived` widens historical throughput to completed-but-archived cards, it doesn't mean an archived (e.g. cancelled) card should still count as scope. A matching card with no readable size is skipped and reported as a warning, the same way an unsized card is skipped from throughput.
 
 These column states are Kanban Zone's own normalization, independent of each column's actual (freeform, per-board, possibly translated) title — confirmed by inspecting two real boards with very different column setups.
 

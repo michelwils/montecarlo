@@ -250,6 +250,26 @@ class TestComputeBoardTarget:
         result = compute_board_target(cards, include_todo=True, include_wip=False)
         assert result == {"todo": (0.0, 0, 0)}
 
+    def test_include_backlog_sums_backlog_cards_only(self):
+        cards = [
+            _card("Backlog", "Grand"),   # 5 pts
+            _card("Backlog", "Petit"),   # 1 pt
+            _card("Backlog", None),      # unsized: skipped
+            _card("Backlog", "Grand", archived_at="2026-01-01T00:00:00.000Z"),  # archived
+            _card("Start", "Petit"),     # not requested
+        ]
+        result = compute_board_target(
+            cards, include_todo=False, include_wip=False, include_backlog=True
+        )
+        assert result == {"backlog": (6.0, 2, 1)}
+
+    def test_backlog_combines_with_todo_and_wip(self):
+        cards = [_card("Start", "Petit"), _card("In Progress", "Petit"), _card("Backlog", "Petit")]
+        result = compute_board_target(
+            cards, include_todo=True, include_wip=True, include_backlog=True
+        )
+        assert result == {"todo": (1.0, 1, 0), "wip": (1.0, 1, 0), "backlog": (1.0, 1, 0)}
+
 
 class TestCountBoardSizes:
     def test_counts_todo_and_wip_by_canonical_tier(self):
@@ -266,6 +286,13 @@ class TestCountBoardSizes:
     def test_only_requested_categories_are_counted(self):
         cards = [_card("Start", "Petit"), _card("In Progress", "Grand")]
         assert count_board_sizes(cards, include_todo=False, include_wip=True) == {"Large": 1}
+
+    def test_backlog_counted_only_when_requested(self):
+        cards = [_card("Backlog", "Moyen"), _card("Start", "Petit")]
+        assert count_board_sizes(cards, include_todo=True, include_wip=False) == {"Small": 1}
+        assert count_board_sizes(
+            cards, include_todo=True, include_wip=False, include_backlog=True
+        ) == {"Small": 1, "Medium": 1}
 
     def test_unsized_archived_and_other_states_are_left_out(self):
         cards = [

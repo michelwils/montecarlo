@@ -447,6 +447,14 @@ class TestMainValidation:
             main()
         assert exc.value.code == 2
 
+    def test_include_backlog_without_board_is_rejected(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "-f", SAMPLE_KANBAN_CSV, "-w", "8", "--include-backlog",
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
+
     def test_include_wip_without_board_is_rejected(self, monkeypatch):
         monkeypatch.setattr("sys.argv", [
             "monte_carlo.py", "-f", SAMPLE_KANBAN_CSV, "-w", "8", "--include-wip",

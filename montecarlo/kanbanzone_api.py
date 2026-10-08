@@ -32,11 +32,12 @@ responses rather than official reference documentation:
   "Backlog", "Start", "In Progress", "Buffer", "Done", "Archive".
   compute_board_target() uses this to derive a simulation target
   straight from cards currently on the board (see --include-todo/
-  --include-wip), instead of requiring it to be entered by hand.
-  "Backlog" is deliberately excluded from --include-todo: it's an
-  undated, not-yet-committed pool (e.g. ideas slated for some future
-  session), unlike "Start" (committed, queued to begin soon) — see
-  _TODO_STATES.
+  --include-wip/--include-backlog), instead of requiring it to be
+  entered by hand. "Backlog" is deliberately excluded from
+  --include-todo: it's an undated, not-yet-committed pool (e.g. ideas
+  slated for some future session), unlike "Start" (committed, queued
+  to begin soon) — see _TODO_STATES. It's opt-in via its own
+  --include-backlog flag instead — see _BACKLOG_STATES.
 """
 import base64
 import csv
@@ -55,8 +56,10 @@ REQUEST_TIMEOUT = 20
 # Kanban Zone's own normalized column states (see module docstring).
 # "To Do" = committed and queued to start soon ("Start" only — "Backlog"
 # is an uncommitted pool, not yet scheduled work, so it's excluded);
+# "Backlog" = that uncommitted pool, opt-in via --include-backlog;
 # "WIP" = work already underway.
 _TODO_STATES = {"Start"}
+_BACKLOG_STATES = {"Backlog"}
 _WIP_STATES = {"In Progress", "Buffer"}
 
 
@@ -197,6 +200,7 @@ def compute_board_target(
     include_todo: bool,
     include_wip: bool,
     uniform_size: float | None = None,
+    include_backlog: bool = False,
 ) -> dict[str, tuple[float, int, int]]:
     """
     Sum the point value of cards currently sitting in matching column
@@ -204,10 +208,11 @@ def compute_board_target(
 
     include_todo matches "Start" (committed, queued to begin soon —
     "Backlog" is deliberately excluded, see module docstring);
-    include_wip matches "In Progress"/"Buffer" (work already underway)
-    — see _TODO_STATES/_WIP_STATES.
+    include_wip matches "In Progress"/"Buffer" (work already underway);
+    include_backlog matches "Backlog" (uncommitted pool, opt-in) — see
+    _TODO_STATES/_WIP_STATES/_BACKLOG_STATES.
 
-    Returns {"todo"|"wip": (points, matched_cards, skipped_cards)},
+    Returns {"todo"|"wip"|"backlog": (points, matched_cards, skipped_cards)},
     with only the requested categories present. skipped_cards counts
     cards in a matching state that couldn't be sized (see
     _card_size_points) — they're excluded from points.
@@ -222,6 +227,7 @@ def compute_board_target(
     for key, states, wanted in (
         ("todo", _TODO_STATES, include_todo),
         ("wip", _WIP_STATES, include_wip),
+        ("backlog", _BACKLOG_STATES, include_backlog),
     ):
         if not wanted:
             continue
@@ -243,11 +249,12 @@ def count_board_sizes(
     cards: list[dict],
     include_todo: bool,
     include_wip: bool,
+    include_backlog: bool = False,
 ) -> dict[str, int]:
     """
     Count the cards compute_board_target() would size, per canonical
-    SCORES tier ("Small", "Medium"...), across the requested to-do/WIP
-    categories combined — so the chart can show the target's mix by
+    SCORES tier ("Small", "Medium"...), across the requested to-do/WIP/
+    backlog categories combined — so the chart can show the target's mix by
     size instead of a bare point total. Cards with no recognizable
     size are left out, as they are from the points.
     """
@@ -256,6 +263,8 @@ def count_board_sizes(
         states |= _TODO_STATES
     if include_wip:
         states |= _WIP_STATES
+    if include_backlog:
+        states |= _BACKLOG_STATES
     counts: dict[str, int] = {}
     for card in _active_cards_in(cards, states):
         tier = SIZE_TIERS.get(_card_size(card))

@@ -370,6 +370,7 @@ def make_charts(
     points: int = 0,
     board_todo: tuple[float, int, int] | None = None,
     board_wip: tuple[float, int, int] | None = None,
+    board_backlog: tuple[float, int, int] | None = None,
     board_sizes: dict[str, int] | None = None,
     annot_file: str | None = None,
     n_simulations: int = 10_000,
@@ -441,6 +442,9 @@ def make_charts(
         if board_wip is not None:
             pts, matched, _skipped = board_wip
             mix_parts.append(s["mix_board_wip"].format(n=f"{pts:g}", count=matched))
+        if board_backlog is not None:
+            pts, matched, _skipped = board_backlog
+            mix_parts.append(s["mix_board_backlog"].format(n=f"{pts:g}", count=matched))
     if not mix_parts:
         mix_str = "—"
     elif len(mix_parts) == 1:

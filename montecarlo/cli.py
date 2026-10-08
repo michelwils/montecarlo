@@ -237,6 +237,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Add every card currently in progress (Kanban Zone's 'In Progress'/"
                         "'Buffer' column states, i.e. WIP) to the target, on top of "
                         "-t/-s/-m/-l/-x/-p. Requires --board.")
+    p.add_argument("--include-backlog", action="store_true",
+                   help="Add every card in the uncommitted, not-yet-scheduled 'Backlog' column "
+                        "state to the target, on top of -t/-s/-m/-l/-x/-p (and "
+                        "--include-todo/--include-wip, if used). Requires --board.")
     p.add_argument("-U", "--uniform-size", type=float, default=None,
                    metavar="POINTS",
                    help="Count every completed card as worth this many points, ignoring "
@@ -324,8 +328,9 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
     """Run one full simulation + chart from an already-parsed args namespace."""
     s = CHART_STRINGS[args.lang]  # console + chart string table
 
-    if (args.include_todo or args.include_wip) and args.board is None:
-        parser.error("--include-todo/--include-wip require --board (column state isn't "
+    include_board = args.include_todo or args.include_wip or args.include_backlog
+    if include_board and args.board is None:
+        parser.error("--include-todo/--include-wip/--include-backlog require --board (column state isn't "
                      "available from a CSV export)")
 
     if args.weeks is None and args.target_date is None:
@@ -336,9 +341,9 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
     board_breakdown: dict[str, tuple[float, int, int]] = {}
     board_sizes: dict[str, int] | None = None
     # A manual mix of 0 is normally a mistake (help + exit below), unless
-    # --include-todo/--include-wip will add to it once the board is
+    # --include-todo/--include-wip/--include-backlog will add to it once the board is
     # fetched — so that check waits until after resolve_data_file() runs.
-    if target_score == 0 and not (args.include_todo or args.include_wip):
+    if target_score == 0 and not include_board:
         parser.print_help()
         sys.exit(1)
 
@@ -359,13 +364,16 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         s["console_board_source"].format(board=args.board) if args.board is not None else fpath
     )
 
-    if args.include_todo or args.include_wip:
+    if include_board:
         board_breakdown = compute_board_target(
-            board_cards, args.include_todo, args.include_wip, args.uniform_size
+            board_cards, args.include_todo, args.include_wip, args.uniform_size,
+            include_backlog=args.include_backlog,
         )
         target_score += sum(pts for pts, _matched, _skipped in board_breakdown.values())
         if args.uniform_size is None:
-            board_sizes = count_board_sizes(board_cards, args.include_todo, args.include_wip)
+            board_sizes = count_board_sizes(
+                board_cards, args.include_todo, args.include_wip, args.include_backlog
+            )
         if target_score == 0:
             parser.print_help()
             sys.exit(1)
@@ -443,6 +451,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         for key, pts_key, skip_key in (
             ("todo", "console_board_todo_pts", "console_board_todo_skipped"),
             ("wip", "console_board_wip_pts", "console_board_wip_skipped"),
+            ("backlog", "console_board_backlog_pts", "console_board_backlog_skipped"),
         ):
             if key not in board_breakdown:
                 continue
@@ -491,6 +500,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
             xlarge=args.xlarge, points=args.points,
             board_todo=board_breakdown.get("todo"), board_wip=board_breakdown.get("wip"),
+            board_backlog=board_breakdown.get("backlog"),
             board_sizes=board_sizes,
             annot_file=args.annotations,
             n_simulations=args.simulations,
