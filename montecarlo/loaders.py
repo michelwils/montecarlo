@@ -40,6 +40,8 @@ class ThroughputLoader:
         window_start: date | None = None,
         window_end: date | None = None,
         uniform_size: float | None = None,
+        owners: list[str] | None = None,
+        xowners: list[str] | None = None,
     ) -> dict[date, float]:
         """
         Load throughput from filepath.
@@ -126,6 +128,34 @@ def _is_unplanned(row: dict[str, str]) -> bool:
     return _get_field(row, _UNPLANNED_COLUMNS).lower() not in _UNPLANNED_FALSY
 
 
+def _owner_names(value) -> set[str]:
+    if not value:
+        return set()
+    if isinstance(value, str):
+        return {name.strip().casefold() for name in next(csv.reader([value])) if name.strip()}
+    if isinstance(value, dict):
+        names = {
+            str(value[key]).strip().casefold()
+            for key in ("name", "fullName", "displayName", "email", "id", "_id", "publicId")
+            if value.get(key)
+        }
+        full_name = " ".join(str(value.get(key) or "").strip() for key in ("firstName", "lastName"))
+        if full_name.strip():
+            names.add(full_name.strip().casefold())
+        return names
+    return set().union(*(_owner_names(owner) for owner in value))
+
+
+def _matches_owners(
+    names: set[str], owners: list[str] | None, xowners: list[str] | None,
+) -> bool:
+    if not names:
+        return True
+    included = {owner.strip().casefold() for owner in owners or []}
+    excluded = {owner.strip().casefold() for owner in xowners or []}
+    return (not included or bool(names & included)) and not bool(names & excluded)
+
+
 class KanbanZoneCSVLoader(ThroughputLoader):
     """
     Loader for Kanban Zone CSV exports.
@@ -164,11 +194,21 @@ class KanbanZoneCSVLoader(ThroughputLoader):
         window_start: date | None = None,
         window_end: date | None = None,
         uniform_size: float | None = None,
+        owners: list[str] | None = None,
+        xowners: list[str] | None = None,
     ) -> dict[date, float]:
         daily: dict[date, float] = defaultdict(float)
         with open(filepath, newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
+            if (owners or xowners) and not {"Owners", "Owner", "Members"}.intersection(reader.fieldnames or []):
+                raise ValueError("--owners/--xowners require an Owners, Owner, or Members CSV column")
             for row in reader:
+                if owners or xowners:
+                    names = set().union(*(
+                        _owner_names(row.get(column)) for column in ("Owners", "Owner", "Members")
+                    ))
+                    if not _matches_owners(names, owners, xowners):
+                        continue
                 done_raw = row.get("Done At", "").strip()
                 if not done_raw:
                     continue
@@ -224,7 +264,11 @@ class TxtLoader(ThroughputLoader):
         window_start: date | None = None,
         window_end: date | None = None,
         uniform_size: float | None = None,  # not applicable: values are pre-aggregated
+        owners: list[str] | None = None,
+        xowners: list[str] | None = None,
     ) -> dict[date, float]:
+        if owners or xowners:
+            raise ValueError("--owners/--xowners require card data (CSV or --board), not TXT totals")
         with open(filepath, encoding="utf-8-sig") as f:
             raw = f.read()
         values = [float(v.strip()) for v in raw.split(",") if v.strip() != ""]
@@ -264,16 +308,37 @@ def get_loader(filepath: str) -> ThroughputLoader | None:
     return None
 
 
+def _exclude_periods(
+    weekly: dict[date, float], periods: list[tuple[date, date]] | None,
+) -> dict[date, float]:
+    if not periods:
+        return weekly
+    excluded_weeks = [
+        (start - timedelta(days=start.weekday()), end - timedelta(days=end.weekday()))
+        for start, end in periods
+    ]
+    return {
+        monday: points for monday, points in weekly.items()
+        if not any(start <= monday <= end for start, end in excluded_weeks)
+    }
+
+
 def load_throughput_auto(
     filepath: str,
     window_weeks: int | None,
     window_start: date | None = None,
     window_end: date | None = None,
     uniform_size: float | None = None,
+    owners: list[str] | None = None,
+    xowners: list[str] | None = None,
+    exclude_periods: list[tuple[date, date]] | None = None,
 ) -> dict[date, float]:
     """
     Unified entry point: auto-detect the format and load throughput.
     Prints a warning if no loader matches.
+
+    exclude_periods removes every calendar week touched by the inclusive
+    date ranges after window selection, without backfilling older history.
 
     uniform_size forces the Kanban Zone CSV loader regardless of
     header-based detection: a board with no size custom field at all
@@ -292,4 +357,6 @@ def load_throughput_auto(
             file=sys.stderr,
         )
         return {}
-    return loader.load(filepath, window_weeks, window_start, window_end, uniform_size)
+    weekly = loader.load(filepath, window_weeks, window_start, window_end, uniform_size,
+                         owners=owners, xowners=xowners)
+    return _exclude_periods(weekly, exclude_periods)

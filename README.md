@@ -61,6 +61,8 @@ The chart is saved in the `output/` directory as `monte_carlo - livr YYYY-MM-DD 
 |      | `--board`         | none          | Fetch cards from this Kanban Zone board's publicId instead of a file (see below) |
 |      | `--api-key`       | none          | API key for `--board` (prefer the `KANBAN_ZONE_API_KEY` env var) |
 |      | `--include-archived` | off        | With `--board`, also fetch archived cards |
+|      | `--owners`        | none          | Keep cards matching any listed owner; accepts multiple space-separated names |
+|      | `--xowners`       | none          | Exclude cards matching any listed owner; overrides `--owners` |
 |      | `--include-todo`  | off           | Add committed, queued-to-start cards (Kanban Zone's `Start` column state — not `Backlog`) to the target, computed from the board itself. Requires `--board` (see below) |
 |      | `--include-backlog` | off         | Also add the uncommitted `Backlog` cards to the target. Requires `--board` (see below) |
 |      | `--include-wip`   | off           | Add in-progress cards (`In Progress`/`Buffer` column states, i.e. WIP) to the target, computed from the board itself. Requires `--board` (see below) |
@@ -70,6 +72,7 @@ The chart is saved in the `output/` directory as `monte_carlo - livr YYYY-MM-DD 
 | `-W` | `--window`        | all           | Most recent N history weeks to use |
 |      | `--window-start`  | none          | First completion date included in history (`YYYY-MM-DD`; not with `-W`). Without `--window-end`, runs through the latest available date |
 |      | `--window-end`    | none          | Last completion date included in history (`YYYY-MM-DD`; not with `-W`). Without `--window-start`, starts from the earliest available date |
+|      | `--exclude-periods` | none        | Exclude whole history weeks touched by inclusive `YYYY-MM-DD:YYYY-MM-DD` ranges; accepts multiple ranges |
 | `-G` | `--chart-weeks`   | `26`          | Weeks shown in the sensitivity chart (0 = all) |
 | `-t` | `--tiny`          | `0`           | Number of *X-Small* items (0.5 pt) |
 | `-s` | `--small`         | `0`           | Number of *Small* items (1 pt) |
@@ -91,6 +94,42 @@ The chart is saved in the `output/` directory as `monte_carlo - livr YYYY-MM-DD 
 | `-T` | `--title`         | language default | Custom chart title |
 | `-D` | `--description`   | none          | Optional subtitle shown below the chart title |
 |      | `--formats`       |               | List supported formats and exit |
+
+### Excluding history periods
+
+```bash
+python monte_carlo.py -p 20 -w 10 --window-start 2026-01-01 --window-end 2026-10-31 --exclude-periods 2026-07-20:2026-08-02 2026-09-07:2026-09-13
+```
+
+Each range is inclusive. Every Monday-to-Sunday calendar week touched by a range
+is removed entirely from historical sampling, not counted as zero throughput.
+Exclusions apply after selecting the history window (`-W` or date bounds): older
+weeks are not pulled in to replace excluded weeks. Overlapping ranges are allowed;
+ranges outside the window have no effect. If no history remains, the forecast exits
+with an error.
+
+This works with CSV, API, TXT, and `@config` files, and also applies to the sensitivity
+chart's historical samples. It does not change simulation dates, working days, or
+board-derived targets. Dates must use `YYYY-MM-DD`, with the end on or after the start.
+
+### Filtering by owner
+
+```bash
+python monte_carlo.py -f exemples/kanban_zone.csv -p 20 -w 10 --owners "Sophie Martin" "Luc Beaulieu"
+python monte_carlo.py --board BOARD_ID -p 20 -w 10 --owners "Alice" "Bob" --xowners "Bob"
+```
+
+Owner matching is exact and case-insensitive, with surrounding whitespace ignored.
+A card with several owners is kept if any owner matches `--owners`, but excluded if
+any owner matches `--xowners`. Cards without an owner are always kept by both
+filters, including when they are combined. Both options also work in `@config` files.
+
+For CSV files, ownership is read from `Owners`, `Owner`, or `Members`, with multiple
+owners separated by commas inside the CSV field. For API cards, ownership is read
+from `owners`, `owner`, or `members`; strings and owner objects (names, emails, or
+IDs) are supported. Filtering applies to both historical throughput and targets
+derived with `--include-todo`, `--include-wip`, or `--include-backlog`.
+TXT totals cannot be filtered because they contain no card ownership data.
 
 ### Item sizes and point values
 
@@ -143,7 +182,15 @@ One flag per line (`-m 5`, `--lang fr`, …), same names as `--help`. Blank line
 
 Add more flags after `@data/run.conf` on the command line to override just those for one run (e.g. `python monte_carlo.py @data/run.conf -w 4`).
 
-**Example file:** `exemples/run.conf` — copy it to `data/run.conf` (gitignored) as a starting point for your own team. Pairing it with `-e/--target-date` means the file rarely needs editing: only the scope (`-t/-s/-m/-l/-x/-p`) and the deadline change as the plan evolves, and "weeks remaining" is recalculated automatically from today every time you run it.
+**Template:** [exemples/run.conf](exemples/run.conf) lists every script option, including API settings, owner filters, and excluded history periods. Optional or conflicting settings are commented out; its active settings produce a forecast from the sample CSV. Run commands from the repository root, since relative paths are resolved from the working directory.
+
+Use `data/run.conf` as your personal configuration. It is ignored by Git through `data/*.conf`; only the example template is intended for version control. To create a local copy in a fresh checkout, run this PowerShell command:
+
+```powershell
+Copy-Item exemples/run.conf data/run.conf
+```
+
+Edit the local copy, uncommenting the options you need. For API input, comment out `--file` before enabling `--board`, and prefer the `KANBAN_ZONE_API_KEY` environment variable rather than storing a real key in either file. Use either `--weeks` or `--target-date`, and either `--window` or date bounds. Pairing the config with `--target-date` automatically recalculates the weeks remaining as the deadline approaches.
 
 ### Running several configs at once
 
@@ -168,7 +215,7 @@ Native export from [Kanban Zone](https://kanbanzone.com/). Required columns:
 | `Done At`                       | Completion date, format `MM-DD-YYYY HH:MM` or `MM/DD/YYYY hh:mm AM/PM` |
 | `CF Size` or `CF Envergure`     | Item size: `X-Small`/`Très petit`, `Small`/`Petit`, `Medium`/`Moyen`, `Large`/`Grand`, or `X-Large`/`Très grand` |
 
-Custom field names are set per-board, so English names are accepted, along with the French names this project's own team's board uses — for both the column name and the size value inside it (see [Item sizes and point values](#item-sizes-and-point-values)). All other export columns are ignored. Detection is automatic: if `Done At` and one of the size column names are present in the header row, the file is recognized as a Kanban Zone export.
+Custom field names are set per-board, so English names are accepted, along with the French names this project's own team's board uses — for both the column name and the size value inside it (see [Item sizes and point values](#item-sizes-and-point-values)). Ownership columns are also read when owner filters are supplied (see [Filtering by owner](#filtering-by-owner)). Detection is automatic: if `Done At` and one of the size column names are present in the header row, the file is recognized as a Kanban Zone export.
 
 Calendar weeks with no completions between the first and last delivered item count as 0 pts of throughput — they are not skipped. Omitting them would silently inflate the average throughput and destabilize the sensitivity chart's small history windows.
 

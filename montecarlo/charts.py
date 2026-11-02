@@ -11,7 +11,7 @@ import numpy as np
 matplotlib.use("Agg")
 
 from .constants import DEFAULT_OUTPUT_DIR
-from .loaders import get_loader, load_throughput_auto
+from .loaders import _exclude_periods, get_loader, load_throughput_auto
 from .naming import DEFAULT_FILENAME_FORMAT, render_filename
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
@@ -215,21 +215,23 @@ def _draw_sensitivity_chart(
     annotations: dict[date, list[str]],
     unplanned_ratio: float = 0.0,
     uniform_size: float | None = None,
+    exclude_periods: list[tuple[date, date]] | None = None,
 ) -> None:
     """Chart 3: probability of delivering vs. history window used."""
     _style_axis(ax3)
 
-    all_daily = load_throughput_auto(
+    full_daily = load_throughput_auto(
         filepath, window_weeks=None, window_start=window_start, window_end=window_end,
         uniform_size=uniform_size,
     )
+    all_daily = _exclude_periods(full_daily, exclude_periods)
     if not all_daily:
         ax3.text(0.5, 0.5, s["no_data"], ha="center", va="center",
                  transform=ax3.transAxes, color=C_SUBTEXT)
         return
 
     max_possible_weeks = int(
-        (max(all_daily.keys()) - min(all_daily.keys())).days / 7
+        (max(full_daily.keys()) - min(full_daily.keys())).days / 7
     ) + 1
     display_weeks = (
         min(max_possible_weeks, display_window)
@@ -245,6 +247,7 @@ def _draw_sensitivity_chart(
         d = load_throughput_auto(
             filepath, window_weeks=w, window_start=window_start, window_end=window_end,
             uniform_size=uniform_size,
+            exclude_periods=exclude_periods,
         )
         if not d:
             probs.append(0.0)
@@ -258,7 +261,7 @@ def _draw_sensitivity_chart(
     # Each window size w means "use the last w weeks of history ending on
     # max_date", so its corresponding x-axis label is the Monday that
     # window starts on — more informative than a bare week count.
-    max_date = max(all_daily.keys())
+    max_date = max(full_daily.keys())
     x_labels = [
         s["all_label"] if w is None else str(max_date - timedelta(weeks=w - 1))
         for w in window_range
@@ -321,7 +324,7 @@ def _draw_sensitivity_chart(
 
     # Annotations: vertical lines at the corresponding week positions
     if annotations:
-        last_monday     = max(all_daily.keys())
+        last_monday     = max_date
         ref_date        = last_monday + timedelta(days=4)  # Friday of the last week
         numeric_windows = [w for w in window_range if w is not None]
         max_window      = max(numeric_windows) if numeric_windows else 0
@@ -380,6 +383,7 @@ def make_charts(
     filename_format: str | None = None,
     title: str | None = None,
     description: str | None = None,
+    exclude_periods: list[tuple[date, date]] | None = None,
 ) -> None:
     if certainties is None:
         certainties = [80]
@@ -507,6 +511,7 @@ def make_charts(
         target_score=target_score, n_workdays=n_workdays, n_weeks=n_weeks,
         display_window=display_window, certainties=certainties, annotations=annotations,
         unplanned_ratio=unplanned_ratio, uniform_size=uniform_size,
+        exclude_periods=exclude_periods,
     )
 
     target_calendar_date = target_date if target_date is not None else sim_start + timedelta(weeks=n_weeks)

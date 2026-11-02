@@ -1,8 +1,10 @@
+from datetime import date
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 
-from montecarlo.charts import make_charts
+from montecarlo.charts import _draw_sensitivity_chart, make_charts
 from montecarlo.strings import CHART_STRINGS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -28,6 +30,41 @@ class TestChartStrings:
         for lang, table in CHART_STRINGS.items():
             for key in ("size_tiny", "size_small", "size_medium", "size_large", "size_xlarge"):
                 assert key in table, f"{lang} table is missing '{key}'"
+
+
+class TestSensitivityExclusions:
+    def test_exclusions_preserve_calendar_anchor(self, kanban_csv, monkeypatch):
+        from montecarlo.loaders import load_throughput_auto
+
+        path = kanban_csv([
+            ("2026-01-05", "Small"), ("2026-01-12", "Medium"), ("2026-01-19", "Large"),
+        ])
+        periods = [(date(2026, 1, 19), date(2026, 1, 19))]
+        histories = {}
+
+        def capture_load(filepath, window_weeks, **kwargs):
+            weekly = load_throughput_auto(filepath, window_weeks, **kwargs)
+            if kwargs.get("exclude_periods"):
+                histories[window_weeks] = weekly
+            return weekly
+
+        monkeypatch.setattr("montecarlo.charts.load_throughput_auto", capture_load)
+        figure, axis = plt.subplots()
+        try:
+            _draw_sensitivity_chart(
+                axis, CHART_STRINGS["en"], filepath=path,
+                window_weeks=2, window_start=None, window_end=None,
+                target_score=1, n_workdays=5, n_weeks=1,
+                display_window=None, certainties=[80], annotations={},
+                exclude_periods=periods,
+            )
+            assert histories[1] == {}
+            assert histories[2] == {date(2026, 1, 12): 3.0}
+            assert histories[None] == {date(2026, 1, 5): 1.0, date(2026, 1, 12): 3.0}
+            assert axis.get_xticklabels()[-1].get_text() == "2026-01-19"
+            assert len(figure.axes[1].patches) == 2
+        finally:
+            plt.close(figure)
 
 
 class TestMakeCharts:

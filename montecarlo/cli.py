@@ -26,7 +26,7 @@ from .kanbanzone_api import (
     fetch_cards,
     write_cards_as_csv,
 )
-from .loaders import LOADERS, get_loader, load_throughput_auto
+from .loaders import LOADERS, _matches_owners, _owner_names, get_loader, load_throughput_auto
 from .naming import DEFAULT_FILENAME_FORMAT, validate_filename_format
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
@@ -59,6 +59,21 @@ def compute_target_score(args: argparse.Namespace) -> float:
         + args.xlarge * SCORES["X-Large"]
         + args.points
     )
+
+
+def _parse_excluded_period(value: str) -> tuple[date, date]:
+    try:
+        start_raw, end_raw = value.split(":")
+        start, end = date.fromisoformat(start_raw), date.fromisoformat(end_raw)
+        if start.isoformat() != start_raw or end.isoformat() != end_raw:
+            raise ValueError
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "--exclude-periods ranges must use YYYY-MM-DD:YYYY-MM-DD"
+        ) from None
+    if end < start:
+        raise argparse.ArgumentTypeError("--exclude-periods end must be on or after start")
+    return start, end
 
 
 def resolve_window(
@@ -145,6 +160,16 @@ def resolve_data_file(
         except KanbanZoneAPIError as e:
             print(f"\n❌ {s['console_api_error'].format(error=e)}", file=sys.stderr)
             sys.exit(1)
+        if args.owners or args.xowners:
+            cards = [
+                card for card in cards
+                if _matches_owners(
+                    set().union(*(
+                        _owner_names(card.get(field)) for field in ("owners", "owner", "members")
+                    )),
+                    args.owners, args.xowners,
+                )
+            ]
         return write_cards_as_csv(cards), cards
 
     if args.file is not None:
@@ -229,6 +254,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "key isn't stored in shell history or a config file.")
     p.add_argument("--include-archived", action="store_true",
                    help="With --board, also fetch archived cards (default: active cards only)")
+    p.add_argument("--owners", nargs="+", default=None, metavar="OWNER",
+                   help="Keep cards matching any listed owner (case-insensitive). "
+                        "Unowned cards are always kept. Quote names containing spaces. "
+                        "Applies to CSV and --board.")
+    p.add_argument("--xowners", nargs="+", default=None, metavar="OWNER",
+                   help="Exclude cards matching any listed owner (case-insensitive). "
+                        "Takes precedence over --owners. Unowned cards are always kept.")
     p.add_argument("--include-todo", action="store_true",
                    help="Add every card committed and queued to start soon (Kanban Zone's "
                         "'Start' column state — not 'Backlog', an uncommitted pool) to the "
@@ -259,6 +291,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--window-end", type=str, default=None,
                    help="Last completion date included in historical data (YYYY-MM-DD); "
                         "if --window-start is omitted, data starts from the earliest available date")
+    p.add_argument("--exclude-periods", type=_parse_excluded_period, nargs="+", default=None,
+                   metavar="START:END",
+                   help="Exclude inclusive YYYY-MM-DD:YYYY-MM-DD ranges from history. "
+                        "Every calendar week touched is removed after selecting the history "
+                        "window, without replacement. Accepts multiple ranges.")
     p.add_argument("-G", "--chart-weeks", type=int, default=26,
                    metavar="N",
                    help="Weeks shown in the bottom chart (default: 26 ≈ 6 months, 0 = all)")
@@ -388,13 +425,19 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             sys.exit(1)
 
         # Load throughput
-        daily = load_throughput_auto(
-            fpath,
-            window_weeks=args.window,
-            window_start=window_start,
-            window_end=window_end,
-            uniform_size=args.uniform_size,
-        )
+        try:
+            daily = load_throughput_auto(
+                fpath,
+                window_weeks=args.window,
+                window_start=window_start,
+                window_end=window_end,
+                uniform_size=args.uniform_size,
+                owners=args.owners if args.board is None else None,
+                xowners=args.xowners if args.board is None else None,
+                exclude_periods=args.exclude_periods,
+            )
+        except ValueError as error:
+            parser.error(str(error))
         if not daily:
             print(f"❌ {s['console_could_not_load']}", file=sys.stderr)
             sys.exit(1)
@@ -438,16 +481,23 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             history_window = f"{args.window} {s['console_weeks_word']}"
         print(f"   {s['param_window']:<{label_width}}: {history_window}")
         print(f"   {s['param_certainties']:<{label_width}}: {', '.join(str(c)+'%' for c in sorted(args.certainties))}")
+        size_counts = {
+            "X-Small": args.tiny, "Small": args.small, "Medium": args.medium,
+            "Large": args.large, "X-Large": args.xlarge,
+        }
+        for tier, count in (board_sizes or {}).items():
+            size_counts[tier] += count
         mix = " + ".join(
-            f"{n}×{label}" for n, label in (
-                (args.tiny, s["size_tiny"]), (args.small, s["size_small"]),
-                (args.medium, s["size_medium"]), (args.large, s["size_large"]),
-                (args.xlarge, s["size_xlarge"]),
+            f"{size_counts[tier]}×{label}" for tier, label in (
+                ("X-Small", s["size_tiny"]), ("Small", s["size_small"]),
+                ("Medium", s["size_medium"]), ("Large", s["size_large"]),
+                ("X-Large", s["size_xlarge"]),
             )
         )
         if args.points:
             mix += " + " + s["console_direct_pts"].format(n=args.points)
         skip_warnings = []
+        board_sources = []
         for key, pts_key, skip_key in (
             ("todo", "console_board_todo_pts", "console_board_todo_skipped"),
             ("wip", "console_board_wip_pts", "console_board_wip_skipped"),
@@ -456,10 +506,11 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             if key not in board_breakdown:
                 continue
             pts, matched, skipped = board_breakdown[key]
-            mix += " + " + s[pts_key].format(n=f"{pts:g}", count=matched)
+            board_sources.append(s[pts_key].format(n=f"{pts:g}", count=matched))
             if skipped:
                 skip_warnings.append(s[skip_key].format(n=skipped))
-        print(f"   {s['param_target']:<{label_width}}: {target_score:g} pts  ({mix})")
+        sources = f"  ({' + '.join(board_sources)})" if board_sources else ""
+        print(f"   {s['param_target']:<{label_width}}: {target_score:g} pts  ({mix}){sources}")
         for warning in skip_warnings:
             print(f"   ⚠️  {warning}")
         print(f"   {s['console_source_weeks_label']:<{label_width}}: "
@@ -497,6 +548,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             unplanned_ratio=args.unplanned_ratio,
             uniform_size=args.uniform_size,
             source_label=source_label,
+            exclude_periods=args.exclude_periods,
             tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
             xlarge=args.xlarge, points=args.points,
             board_todo=board_breakdown.get("todo"), board_wip=board_breakdown.get("wip"),
