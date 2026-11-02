@@ -27,6 +27,25 @@ from .theme import (
 )
 
 
+def owner_filter_label(owners: list[str] | None, xowners: list[str] | None,
+                       s: dict[str, str]) -> str | None:
+    """'Alice, Bob except Bob' / 'all except Bob', or None when no filter is set."""
+    if not owners and not xowners:
+        return None
+    label = ", ".join(owners) if owners else s["owners_all"]
+    if xowners:
+        label += f" {s['owners_except']} " + ", ".join(xowners)
+    return label
+
+
+def excluded_periods_label(periods: list[tuple[date, date]] | None,
+                           separator: str = ", ") -> str | None:
+    """'2026-07-20 → 2026-08-02, …', or None when no period is excluded."""
+    if not periods:
+        return None
+    return separator.join(f"{start} → {end}" for start, end in periods)
+
+
 def _style_axis(ax) -> None:
     ax.set_facecolor(BG_AX)
     ax.spines[["top", "right"]].set_visible(False)
@@ -55,6 +74,8 @@ def _draw_params_panel(
     certainties_str: str,
     n_simulations: int,
     annot_str: str,
+    excluded_str: str | None = None,
+    owners_str: str | None = None,
 ) -> None:
     ax_params.set_facecolor("#1E2336")
     ax_params.set_xticks([])
@@ -73,6 +94,8 @@ def _draw_params_panel(
         (s["param_holidays"],    days_off_str),
         (s["param_unplanned"],   unplanned_str),
         (s["param_window"],      fenetre_str),
+        *([(s["param_excluded"], excluded_str)] if excluded_str is not None else []),
+        *([(s["param_owners"],   owners_str)] if owners_str is not None else []),
         (s["param_chart"],       display_str),
         (s["param_certainties"], certainties_str),
         (s["param_simulations"], f"{n_simulations:,}"),
@@ -80,17 +103,16 @@ def _draw_params_panel(
     ]
 
     n_params  = len(params)
-    mix_lines = mix_str.count("\n") + 1
     # Height of one 8.5pt text line in row units (a row is ~86 px on the
-    # 1920x1080 figure, a text line ~21 px); extra Mix lines each cost one
-    # such line, not a full row's worth of padding.
+    # 1920x1080 figure, a text line ~21 px); extra lines of a multi-line
+    # value (Mix, excluded periods) each cost one such line, not a full
+    # row's worth of padding.
     line_unit = 0.25
-    extra     = (mix_lines - 1) * line_unit
-    n_slots   = n_params + extra  # multi-line Mix consumes extra vertical space
+    row_spans = [1 + value.count("\n") * line_unit for _label, value in params]
+    n_slots   = sum(row_spans)
 
     slot = 0.0
-    for i, (label, value) in enumerate(params):
-        row_span = 1 + extra if label == s["param_mix"] else 1
+    for i, ((label, value), row_span) in enumerate(zip(params, row_spans)):
         y = 1.0 - (slot + 0.35) / n_slots
         ax_params.text(0.08, y, label,
                        transform=ax_params.transAxes,
@@ -496,6 +518,11 @@ def make_charts(
         days_off_str=days_off_str, unplanned_str=unplanned_str,
         fenetre_str=fenetre_str, display_str=display_str,
         certainties_str=certainties_str, n_simulations=n_simulations, annot_str=annot_str,
+        excluded_str=excluded_periods_label(exclude_periods, separator="\n"),
+        owners_str=owner_filter_label(
+            owner_filter.owners if owner_filter else None,
+            owner_filter.xowners if owner_filter else None, s,
+        ),
     )
 
     _draw_weeks_histogram(

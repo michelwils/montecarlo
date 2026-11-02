@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from .annotations import load_annotations
-from .charts import make_charts
+from .charts import excluded_periods_label, make_charts, owner_filter_label
 from .constants import (
     DEFAULT_ANNOTATIONS_FILE,
     DEFAULT_CACHE_DIR,
@@ -522,6 +522,12 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         else:
             history_window = f"{args.window} {s['console_weeks_word']}"
         print(f"   {s['param_window']:<{label_width}}: {history_window}")
+        for label_key, value in (
+            ("param_excluded", excluded_periods_label(args.exclude_periods)),
+            ("param_owners", owner_filter_label(args.owners, args.xowners, s)),
+        ):
+            if value is not None:
+                print(f"   {s[label_key]:<{label_width}}: {value}")
         print(f"   {s['param_certainties']:<{label_width}}: {', '.join(str(c)+'%' for c in sorted(args.certainties))}")
         size_counts = {
             "X-Small": args.tiny, "Small": args.small, "Medium": args.medium,

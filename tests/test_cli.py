@@ -989,3 +989,10 @@ class TestOwnerFilterReporting:
         assert "--xowners 'Nobody' matches no card owner" in err
         assert "--owners 'verreault'" not in err
         assert "laurie.harvey@fsaa.ulaval.ca, sebastien.verreault.1@ulaval.ca" in err
+
+    def test_active_filters_are_shown_in_the_summary(self, monkeypatch, capsys):
+        self._board(monkeypatch, self.CARDS, "--owners", "verreault", "--xowners", "harvey",
+                    "--exclude-periods", "2026-01-05:2026-01-11")
+        out = capsys.readouterr().out
+        assert "verreault except harvey" in out
+        assert "2026-01-05 → 2026-01-11" in out
