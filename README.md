@@ -116,20 +116,37 @@ board-derived targets. Dates must use `YYYY-MM-DD`, with the end on or after the
 
 ```bash
 python monte_carlo.py -f exemples/kanban_zone.csv -p 20 -w 10 --owners "Sophie Martin" "Luc Beaulieu"
-python monte_carlo.py --board BOARD_ID -p 20 -w 10 --owners "Alice" "Bob" --xowners "Bob"
+python monte_carlo.py --board BOARD_ID -p 20 -w 10 --owners alice.smith@example.com --xowners bob
 ```
 
-Owner matching is exact and case-insensitive, with surrounding whitespace ignored.
+A term matches an owner when it is the same name or email (ignoring case, accents and
+surrounding whitespace), or when all its words appear in the owner's name or in the part
+of the email before the `@`. So `"Sophie Martin"`, `martin` and `sophie.martin` all match
+both the CSV name `Sophie Martin` and the email `sophie.martin.1@example.com`, while
+`Soph` matches neither. A term that is itself an email only matches that exact email.
+
+This matters with `--board`: the Kanban Zone API identifies owners by **email**, while
+the CSV export's `Members` column lists **full names**. The API also gives a single
+`owner` per card, whereas a CSV card can list several members.
+
 A card with several owners is kept if any owner matches `--owners`, but excluded if
 any owner matches `--xowners`. Cards without an owner are always kept by both
-filters, including when they are combined. Both options also work in `@config` files.
+filters, including when they are combined — on some boards that's a large share of
+the history (about a third on one team board), so check how many cards have no owner
+before relying on a filtered forecast. Both options also work in `@config` files.
+
+When a term matches no owner at all, a warning lists the owners actually found, so a
+typo or a name-vs-email mismatch doesn't silently forecast from the wrong cards. Active
+owner filters and excluded periods are shown in the console summary and in the chart's
+parameters panel.
 
 For CSV files, ownership is read from `Owners`, `Owner`, or `Members`, with multiple
 owners separated by commas inside the CSV field. For API cards, ownership is read
-from `owners`, `owner`, or `members`; strings and owner objects (names, emails, or
-IDs) are supported. Filtering applies to both historical throughput and targets
-derived with `--include-todo`, `--include-wip`, or `--include-backlog`.
-TXT totals cannot be filtered because they contain no card ownership data.
+from `owners`, `owner`, or `members`; strings, owner objects (names, emails, or
+IDs) and numeric IDs are supported. Filtering applies to historical throughput, to
+the history-window chart, and to targets derived with `--include-todo`,
+`--include-wip`, or `--include-backlog`. TXT totals cannot be filtered because they
+contain no card ownership data.
 
 ### Item sizes and point values
 
