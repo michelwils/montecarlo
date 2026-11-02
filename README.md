@@ -67,7 +67,7 @@ The chart is saved in the `output/` directory as `monte_carlo - livr YYYY-MM-DD 
 |      | `--include-backlog` | off         | Also add the uncommitted `Backlog` cards to the target. Requires `--board` (see below) |
 |      | `--include-wip`   | off           | Add in-progress cards (`In Progress`/`Buffer` column states, i.e. WIP) to the target, computed from the board itself. Requires `--board` (see below) |
 | `-U` | `--uniform-size`  | none          | Count every completed card as this many points instead of reading `CF Size`/`CF Envergure` — for boards with no size field (see below) |
-| `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks (or use `-e`) |
+| `-w` | `--weeks`         | *(required)*  | Simulation duration in weeks (or use `-e`; if both are given, the last one wins) |
 | `-e` | `--target-date`   | none          | Target delivery date (`YYYY-MM-DD`) instead of `-w`; weeks = ceil((target − start) / 7 days) |
 | `-W` | `--window`        | all           | Most recent N history weeks to use |
 |      | `--window-start`  | none          | First completion date included in history (`YYYY-MM-DD`; not with `-W`). Without `--window-end`, runs through the latest available date |
@@ -190,7 +190,7 @@ Use `data/run.conf` as your personal configuration. It is ignored by Git through
 Copy-Item exemples/run.conf data/run.conf
 ```
 
-Edit the local copy, uncommenting the options you need. For API input, comment out `--file` before enabling `--board`, and prefer the `KANBAN_ZONE_API_KEY` environment variable rather than storing a real key in either file. Use either `--weeks` or `--target-date`, and either `--window` or date bounds. Pairing the config with `--target-date` automatically recalculates the weeks remaining as the deadline approaches.
+Edit the local copy, uncommenting the options you need. For API input, comment out `--file` before enabling `--board`, and prefer the `KANBAN_ZONE_API_KEY` environment variable rather than storing a real key in either file. Use either `--weeks` or `--target-date`, and either `--window` or date bounds. Passing the other duration option on the command line overrides the config's (e.g. `@data/run.conf --target-date 2026-12-15` replaces its `--weeks`). Pairing the config with `--target-date` automatically recalculates the weeks remaining as the deadline approaches.
 
 ### Running several configs at once
 

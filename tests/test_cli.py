@@ -514,13 +514,19 @@ class TestMainValidation:
         assert exc.value.code == 1
         assert "usage" in capsys.readouterr().out.lower()
 
-    def test_weeks_and_target_date_together_are_rejected(self, monkeypatch):
-        monkeypatch.setattr("sys.argv", [
-            "monte_carlo.py", "-s", "5", "-w", "8", "--target-date", "2026-12-31",
-        ])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 2
+    @pytest.mark.parametrize("argv,weeks,target_date", [
+        (["-w", "8", "--target-date", "2026-12-31"], None, "2026-12-31"),
+        (["--target-date", "2026-12-31", "-w", "8"], 8, None),
+    ])
+    def test_last_of_weeks_and_target_date_wins(self, argv, weeks, target_date):
+        args = build_parser().parse_args(argv)
+        assert (args.weeks, args.target_date) == (weeks, target_date)
+
+    def test_command_line_target_date_overrides_config_weeks(self):
+        args = build_parser().parse_args(
+            [f"@{REPO_ROOT / 'exemples' / 'run.conf'}", "--target-date", "2026-12-31"]
+        )
+        assert (args.weeks, args.target_date) == (None, "2026-12-31")
 
     def test_unplanned_ratio_of_one_is_rejected(self, monkeypatch):
         monkeypatch.setattr("sys.argv", [

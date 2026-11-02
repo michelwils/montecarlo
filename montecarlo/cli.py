@@ -260,6 +260,18 @@ class _ConfigArgumentParser(argparse.ArgumentParser):
         return [dbl or sgl or bare for dbl, sgl, bare in _CONFIG_TOKEN_RE.findall(line)]
 
 
+class _StoreDuration(argparse.Action):
+    """
+    -w/--weeks and -e/--target-date are two ways to set the same duration,
+    so setting one clears the other: the last one given wins. This is what
+    lets a command-line flag override the other one set in an @config file.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        setattr(namespace, "target_date" if self.dest == "weeks" else "weeks", None)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = _ConfigArgumentParser(
         description="Monte Carlo simulation for software delivery forecasting.",
@@ -317,9 +329,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Count every completed card as worth this many points, ignoring "
                         "CF Size/CF Envergure entirely — for a Kanban Zone CSV/API source "
                         "with no size field, where every card is treated as equivalent.")
-    p.add_argument("-w", "--weeks", type=int, default=None,
-                   help="Simulation duration in weeks (required, unless -e/--target-date is used)")
-    p.add_argument("-e", "--target-date", type=str, default=None,
+    p.add_argument("-w", "--weeks", type=int, default=None, action=_StoreDuration,
+                   help="Simulation duration in weeks (required, unless -e/--target-date is used). "
+                        "Whichever of -w/-e comes last wins, so either one on the command line "
+                        "overrides the other in an @config file.")
+    p.add_argument("-e", "--target-date", type=str, default=None, action=_StoreDuration,
                    help="Target delivery date (YYYY-MM-DD) instead of -w/--weeks; "
                         "weeks is derived as the ceiling of (target date - start date) / 7 days")
     p.add_argument("-W", "--window", type=int, default=None,
@@ -422,9 +436,6 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
     if target_score == 0 and not include_board:
         parser.print_help()
         sys.exit(1)
-
-    if args.weeks is not None and args.target_date is not None:
-        parser.error("--weeks and --target-date cannot be used together")
 
     if args.cache_ttl < 0:
         parser.error("--cache-ttl must be 0 or greater")
