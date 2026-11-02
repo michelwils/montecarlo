@@ -4,6 +4,12 @@ import csv
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolated_api_cache(tmp_path, monkeypatch):
+    """Keep the Kanban Zone API cache out of the real .cache/ and out of other tests."""
+    monkeypatch.setattr("montecarlo.cli.DEFAULT_CACHE_DIR", str(tmp_path / "api_cache"))
+
+
 @pytest.fixture
 def kanban_csv(tmp_path):
     """

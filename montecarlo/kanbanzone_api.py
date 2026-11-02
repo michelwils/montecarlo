@@ -41,8 +41,11 @@ responses rather than official reference documentation:
 """
 import base64
 import csv
+import hashlib
 import json
+import os
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
@@ -122,6 +125,73 @@ def fetch_cards(board: str, api_key: str, include_archived: bool = False) -> lis
         page += 1
 
     return cards
+
+
+def _cache_path(cache_dir: str, board: str, include_archived: bool) -> str:
+    # Hashed so a board id never has to be a valid filename. The API key
+    # is deliberately not part of the name or the contents.
+    digest = hashlib.sha256(board.encode("utf-8")).hexdigest()[:16]
+    suffix = "archived" if include_archived else "active"
+    return os.path.join(cache_dir, f"cards_{digest}_{suffix}.json")
+
+
+def _read_cache(path: str, ttl_seconds: float) -> tuple[list[dict], float] | None:
+    """Return (cards, age_seconds) from a fresh cache file, else None (missing, stale, corrupt)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        age = time.time() - float(data["fetched_at"])
+        cards = data["cards"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(cards, list) or age < 0 or age > ttl_seconds:
+        return None
+    return cards, age
+
+
+def _write_cache(path: str, cards: list[dict]) -> None:
+    """Best-effort atomic write; a cache that can't be written is just skipped."""
+    tmp = f"{path}.tmp"
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"fetched_at": time.time(), "cards": cards}, f)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+def fetch_cards_cached(
+    board: str,
+    api_key: str,
+    include_archived: bool = False,
+    *,
+    cache_dir: str,
+    ttl_minutes: float,
+    refresh: bool = False,
+    fetch=fetch_cards,
+) -> tuple[list[dict], float | None]:
+    """
+    fetch_cards() behind a small on-disk cache, keyed by board and
+    include_archived. Returns (cards, cache_age_seconds); the age is None
+    when the cards were just fetched from the API.
+
+    ttl_minutes <= 0 disables the cache entirely (no read, no write).
+    refresh skips the read but still rewrites the cache with fresh data.
+    """
+    if ttl_minutes <= 0:
+        return fetch(board, api_key, include_archived=include_archived), None
+    path = _cache_path(cache_dir, board, include_archived)
+    if not refresh:
+        hit = _read_cache(path, ttl_minutes * 60)
+        if hit is not None:
+            return hit
+    cards = fetch(board, api_key, include_archived=include_archived)
+    _write_cache(path, cards)
+    return cards, None
 
 
 def cards_to_csv_rows(cards: list[dict]) -> list[dict[str, str]]:

@@ -94,6 +94,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "console_missing_api_key":    "--board requires an API key: use --api-key or set the {env_var} environment variable.",
         "console_api_error":          "{error}",
         "console_board_source":       "Kanban Zone API (board {board})",
+        "console_cache_hit":          "Using cached board data ({minutes:.0f} min old) — use --refresh to fetch fresh cards.",
     },
     "fr": {
         # Titre de la figure
@@ -182,5 +183,6 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "console_missing_api_key":    "--board nécessite une clé API : utilisez --api-key ou définissez la variable d'environnement {env_var}.",
         "console_api_error":          "{error}",
         "console_board_source":       "API Kanban Zone (tableau {board})",
+        "console_cache_hit":          "Données du tableau en cache ({minutes:.0f} min) — utilisez --refresh pour récupérer des cartes à jour.",
     },
 }

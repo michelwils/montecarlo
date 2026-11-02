@@ -12,6 +12,7 @@ from montecarlo.kanbanzone_api import (
     compute_board_target,
     count_board_sizes,
     fetch_cards,
+    fetch_cards_cached,
     write_cards_as_csv,
 )
 
@@ -182,6 +183,73 @@ def _card(column_state, size=None, done_at=None, archived_at=None):
         "archivedAt": archived_at,
         "customFields": custom_fields,
     }
+
+
+class TestFetchCardsCached:
+    @staticmethod
+    def _fetcher(calls, cards=None):
+        def fetch(board, api_key, include_archived=False):
+            calls.append((board, include_archived))
+            return cards if cards is not None else [{"n": len(calls)}]
+        return fetch
+
+    def test_second_call_within_ttl_is_served_from_cache(self, tmp_path):
+        calls = []
+        kw = dict(cache_dir=str(tmp_path), ttl_minutes=15, fetch=self._fetcher(calls))
+        cards1, age1 = fetch_cards_cached("b", "k", **kw)
+        cards2, age2 = fetch_cards_cached("b", "k", **kw)
+        assert len(calls) == 1
+        assert age1 is None and age2 is not None
+        assert cards2 == cards1
+
+    def test_expired_cache_triggers_a_new_fetch(self, tmp_path):
+        calls = []
+        kw = dict(cache_dir=str(tmp_path), fetch=self._fetcher(calls))
+        fetch_cards_cached("b", "k", ttl_minutes=15, **kw)
+        with patch("montecarlo.kanbanzone_api.time.time", return_value=__import__("time").time() + 16 * 60):
+            _cards, age = fetch_cards_cached("b", "k", ttl_minutes=15, **kw)
+        assert len(calls) == 2 and age is None
+
+    def test_ttl_zero_disables_cache_entirely(self, tmp_path):
+        calls = []
+        kw = dict(cache_dir=str(tmp_path / "c"), ttl_minutes=0, fetch=self._fetcher(calls))
+        fetch_cards_cached("b", "k", **kw)
+        fetch_cards_cached("b", "k", **kw)
+        assert len(calls) == 2
+        assert not (tmp_path / "c").exists()
+
+    def test_refresh_skips_read_but_updates_cache(self, tmp_path):
+        calls = []
+        kw = dict(cache_dir=str(tmp_path), ttl_minutes=15, fetch=self._fetcher(calls))
+        fetch_cards_cached("b", "k", **kw)
+        fresh, age = fetch_cards_cached("b", "k", refresh=True, **kw)
+        assert len(calls) == 2 and age is None
+        cached, cached_age = fetch_cards_cached("b", "k", **kw)
+        assert len(calls) == 2 and cached == fresh and cached_age is not None
+
+    def test_board_and_include_archived_are_separate_cache_entries(self, tmp_path):
+        calls = []
+        kw = dict(cache_dir=str(tmp_path), ttl_minutes=15, fetch=self._fetcher(calls))
+        fetch_cards_cached("b1", "k", **kw)
+        fetch_cards_cached("b2", "k", **kw)
+        fetch_cards_cached("b1", "k", include_archived=True, **kw)
+        assert len(calls) == 3
+
+    def test_corrupt_cache_file_is_ignored(self, tmp_path):
+        calls = []
+        kw = dict(cache_dir=str(tmp_path), ttl_minutes=15, fetch=self._fetcher(calls))
+        fetch_cards_cached("b", "k", **kw)
+        for f in tmp_path.iterdir():
+            f.write_text("{not json", encoding="utf-8")
+        _cards, age = fetch_cards_cached("b", "k", **kw)
+        assert len(calls) == 2 and age is None
+
+    def test_api_key_is_never_written_to_the_cache(self, tmp_path):
+        fetch_cards_cached("b", "SECRET-KEY", cache_dir=str(tmp_path), ttl_minutes=15,
+                           fetch=self._fetcher([]))
+        for f in tmp_path.iterdir():
+            assert "SECRET-KEY" not in f.name
+            assert "SECRET-KEY" not in f.read_text(encoding="utf-8")
 
 
 class TestComputeBoardTarget:

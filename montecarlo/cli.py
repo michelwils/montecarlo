@@ -12,6 +12,8 @@ from .annotations import load_annotations
 from .charts import make_charts
 from .constants import (
     DEFAULT_ANNOTATIONS_FILE,
+    DEFAULT_CACHE_DIR,
+    DEFAULT_CACHE_TTL_MINUTES,
     DEFAULT_FILE,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_THROUGHPUT_TXT,
@@ -24,6 +26,7 @@ from .kanbanzone_api import (
     compute_board_target,
     count_board_sizes,
     fetch_cards,
+    fetch_cards_cached,
     write_cards_as_csv,
 )
 from .loaders import LOADERS, get_loader, load_throughput_auto
@@ -141,10 +144,16 @@ def resolve_data_file(
             )
             sys.exit(1)
         try:
-            cards = fetch_cards(args.board, api_key, include_archived=args.include_archived)
+            cards, cache_age = fetch_cards_cached(
+                args.board, api_key, include_archived=args.include_archived,
+                cache_dir=args.cache_dir, ttl_minutes=args.cache_ttl,
+                refresh=args.refresh, fetch=fetch_cards,
+            )
         except KanbanZoneAPIError as e:
             print(f"\n❌ {s['console_api_error'].format(error=e)}", file=sys.stderr)
             sys.exit(1)
+        if cache_age is not None:
+            print(f"\n💾 {s['console_cache_hit'].format(minutes=cache_age / 60)}")
         return write_cards_as_csv(cards), cards
 
     if args.file is not None:
@@ -229,6 +238,16 @@ def build_parser() -> argparse.ArgumentParser:
                         "key isn't stored in shell history or a config file.")
     p.add_argument("--include-archived", action="store_true",
                    help="With --board, also fetch archived cards (default: active cards only)")
+    p.add_argument("--cache-ttl", type=float, default=DEFAULT_CACHE_TTL_MINUTES,
+                   metavar="MINUTES",
+                   help="With --board, reuse cards fetched within the last MINUTES minutes "
+                        "instead of calling the API again "
+                        f"(default: {DEFAULT_CACHE_TTL_MINUTES:g}; 0 disables the cache)")
+    p.add_argument("--refresh", action="store_true",
+                   help="With --board, ignore any cached cards and fetch fresh ones "
+                        "(the cache is updated)")
+    p.add_argument("--cache-dir", default=DEFAULT_CACHE_DIR,
+                   help=f"Directory for cached API responses (default: {DEFAULT_CACHE_DIR})")
     p.add_argument("--include-todo", action="store_true",
                    help="Add every card committed and queued to start soon (Kanban Zone's "
                         "'Start' column state — not 'Backlog', an uncommitted pool) to the "
@@ -349,6 +368,9 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
 
     if args.weeks is not None and args.target_date is not None:
         parser.error("--weeks and --target-date cannot be used together")
+
+    if args.cache_ttl < 0:
+        parser.error("--cache-ttl must be 0 or greater")
 
     if not (0.0 <= args.unplanned_ratio < 1.0):
         parser.error("--unplanned-ratio must be between 0 and 1 (exclusive of 1)")

@@ -22,4 +22,7 @@ DEFAULT_FILE             = "data/kanban_zone.csv"
 DEFAULT_THROUGHPUT_TXT   = "data/Throughput.txt"
 DEFAULT_ANNOTATIONS_FILE = "data/annotations.csv"
 DEFAULT_OUTPUT_DIR       = "output"
+# Gitignored (".cache"); holds API responses reused across runs.
+DEFAULT_CACHE_DIR        = ".cache/kanbanzone"
+DEFAULT_CACHE_TTL_MINUTES = 15.0
 DATE_FORMATS = ["%m-%d-%Y %H:%M", "%m/%d/%Y %I:%M %p", "%Y/%m/%d", "%Y-%m-%d"]
