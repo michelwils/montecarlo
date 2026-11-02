@@ -742,7 +742,7 @@ class TestMainEndToEnd:
             path = tmp_path / "board_fetch.csv"
             rows = cards_to_csv_rows(cards)
             with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csvmod.DictWriter(f, fieldnames=["Done At", "CF Envergure"])
+                writer = csvmod.DictWriter(f, fieldnames=["Done At", "Owners", "CF Envergure"])
                 writer.writeheader()
                 writer.writerows(rows)
             written_path["path"] = str(path)
@@ -793,7 +793,7 @@ class TestMainEndToEnd:
             path = tmp_path / "board_fetch.csv"
             rows = cards_to_csv_rows(cards)
             with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csvmod.DictWriter(f, fieldnames=["Done At", "CF Envergure"])
+                writer = csvmod.DictWriter(f, fieldnames=["Done At", "Owners", "CF Envergure"])
                 writer.writeheader()
                 writer.writerows(rows)
             return str(path)

@@ -6,6 +6,7 @@ import pytest
 from montecarlo.loaders import (
     KanbanZoneCSVLoader,
     LOADERS,
+    OwnerFilter,
     ThroughputLoader,
     TxtLoader,
     _fill_zero_weeks,
@@ -13,6 +14,7 @@ from montecarlo.loaders import (
     _is_unplanned,
     get_loader,
     load_throughput_auto,
+    owner_labels,
 )
 
 
@@ -156,7 +158,7 @@ class TestKanbanZoneCSVLoader:
             ]:
                 writer.writerow(["2026-03-16", size, members])
         weekly = load_throughput_auto(
-            str(path), window_weeks=None, owners=owners, xowners=xowners,
+            str(path), window_weeks=None, owner_filter=OwnerFilter(owners, xowners),
         )
         assert weekly == ({} if expected is None else {date(2026, 3, 16): expected})
 
@@ -164,18 +166,18 @@ class TestKanbanZoneCSVLoader:
     def test_owner_column_names(self, tmp_path, column):
         path = tmp_path / "owners.csv"
         path.write_text(f"Done At,CF Size,{column}\n2026-03-16,Small,Alice\n", encoding="utf-8")
-        assert load_throughput_auto(str(path), None, owners=["Alice"]) == {date(2026, 3, 16): 1.0}
+        assert load_throughput_auto(str(path), None, owner_filter=OwnerFilter(["Alice"])) == {date(2026, 3, 16): 1.0}
 
     def test_owner_filter_requires_ownership_column(self, kanban_csv):
         path = kanban_csv([("2026-03-16", "Small")])
         with pytest.raises(ValueError, match="CSV column"):
-            load_throughput_auto(path, None, xowners=["Alice"])
+            load_throughput_auto(path, None, owner_filter=OwnerFilter(xowners=["Alice"]))
 
     def test_owner_filter_rejects_txt_totals(self, tmp_path):
         path = tmp_path / "throughput.txt"
         path.write_text("1,2,3", encoding="utf-8")
         with pytest.raises(ValueError, match="not TXT totals"):
-            load_throughput_auto(str(path), None, owners=["Alice"])
+            load_throughput_auto(str(path), None, owner_filter=OwnerFilter(["Alice"]))
 
     def test_match_requires_header_columns(self, tmp_path):
         loader = KanbanZoneCSVLoader()
@@ -454,3 +456,15 @@ class TestLoaderRegistry:
         assert get_loader(str(path)) is None  # confirms normal detection fails
         weekly = load_throughput_auto(str(path), window_weeks=None, uniform_size=1.0)
         assert weekly == {date(2026, 3, 16): 1.0}
+
+
+class TestOwnerLabels:
+    @pytest.mark.parametrize("value,expected", [
+        (None, []), ("", []), ([], []), ({}, []), (False, []),
+        ("Alice, Bob", ["Alice", "Bob"]),
+        (12345, ["12345"]),
+        ([101, {"name": "Bob"}], ["101", "Bob"]),
+        ({"firstName": "Ann", "lastName": "Lee"}, ["Ann Lee"]),
+    ])
+    def test_shapes(self, value, expected):
+        assert owner_labels(value) == expected

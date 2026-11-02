@@ -40,8 +40,7 @@ class ThroughputLoader:
         window_start: date | None = None,
         window_end: date | None = None,
         uniform_size: float | None = None,
-        owners: list[str] | None = None,
-        xowners: list[str] | None = None,
+        owner_filter: "OwnerFilter | None" = None,
     ) -> dict[date, float]:
         """
         Load throughput from filepath.
@@ -52,6 +51,9 @@ class ThroughputLoader:
         uniform_size, where applicable, counts every completed item as
         this many points instead of reading a size field (for boards
         with no size categorization at all — see KanbanZoneCSVLoader).
+        owner_filter, when active, keeps only the cards it accepts
+        (see OwnerFilter); loaders without card ownership raise
+        ValueError.
         """
         raise NotImplementedError
 
@@ -128,32 +130,66 @@ def _is_unplanned(row: dict[str, str]) -> bool:
     return _get_field(row, _UNPLANNED_COLUMNS).lower() not in _UNPLANNED_FALSY
 
 
-def _owner_names(value) -> set[str]:
-    if not value:
-        return set()
+# Columns (CSV export) and keys (API cards) that name a card's owners.
+OWNER_COLUMNS = ("Owners", "Owner", "Members")
+OWNER_KEYS    = ("owners", "owner", "members")
+
+
+def owner_labels(value) -> list[str]:
+    """
+    Owner identifiers (names, emails, ids) found in one CSV cell or API
+    value: a comma-separated string, an owner object, a list of either,
+    or a bare id such as a number.
+    """
+    if value is None or value is False:
+        return []
     if isinstance(value, str):
-        return {name.strip().casefold() for name in next(csv.reader([value])) if name.strip()}
+        return [name.strip() for name in next(csv.reader([value]), []) if name.strip()]
     if isinstance(value, dict):
-        names = {
-            str(value[key]).strip().casefold()
+        labels = [
+            str(value[key]).strip()
             for key in ("name", "fullName", "displayName", "email", "id", "_id", "publicId")
-            if value.get(key)
-        }
+            if value.get(key) not in (None, "")
+        ]
         full_name = " ".join(str(value.get(key) or "").strip() for key in ("firstName", "lastName"))
         if full_name.strip():
-            names.add(full_name.strip().casefold())
-        return names
-    return set().union(*(_owner_names(owner) for owner in value))
+            labels.append(full_name.strip())
+        return [label for label in labels if label]
+    if isinstance(value, (list, tuple, set)):
+        return [label for item in value for label in owner_labels(item)]
+    return [str(value)]
 
 
-def _matches_owners(
-    names: set[str], owners: list[str] | None, xowners: list[str] | None,
-) -> bool:
-    if not names:
-        return True
-    included = {owner.strip().casefold() for owner in owners or []}
-    excluded = {owner.strip().casefold() for owner in xowners or []}
-    return (not included or bool(names & included)) and not bool(names & excluded)
+def card_owner_labels(record: dict, fields: tuple[str, ...]) -> list[str]:
+    """owner_labels() of every listed field of a CSV row or API card."""
+    return [label for field in fields for label in owner_labels(record.get(field))]
+
+
+def _normalize(text: str) -> str:
+    return text.strip().casefold()
+
+
+class OwnerFilter:
+    """
+    --owners/--xowners, normalized once and applied to each card's owner
+    labels. Matching is exact, ignoring case and surrounding whitespace.
+    """
+
+    def __init__(self, owners: list[str] | None = None, xowners: list[str] | None = None):
+        self.owners  = list(owners or [])
+        self.xowners = list(xowners or [])
+        self._included = {_normalize(t) for t in self.owners}
+        self._excluded = {_normalize(t) for t in self.xowners}
+
+    def __bool__(self) -> bool:
+        return bool(self._included or self._excluded)
+
+    def keeps(self, labels: list[str]) -> bool:
+        """True if a card with these owner labels passes the filter. Unowned cards always do."""
+        if not labels:
+            return True
+        names = {_normalize(label) for label in labels}
+        return (not self._included or bool(names & self._included)) and not names & self._excluded
 
 
 class KanbanZoneCSVLoader(ThroughputLoader):
@@ -194,21 +230,16 @@ class KanbanZoneCSVLoader(ThroughputLoader):
         window_start: date | None = None,
         window_end: date | None = None,
         uniform_size: float | None = None,
-        owners: list[str] | None = None,
-        xowners: list[str] | None = None,
+        owner_filter: OwnerFilter | None = None,
     ) -> dict[date, float]:
         daily: dict[date, float] = defaultdict(float)
         with open(filepath, newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
-            if (owners or xowners) and not {"Owners", "Owner", "Members"}.intersection(reader.fieldnames or []):
+            if owner_filter and not set(OWNER_COLUMNS).intersection(reader.fieldnames or []):
                 raise ValueError("--owners/--xowners require an Owners, Owner, or Members CSV column")
             for row in reader:
-                if owners or xowners:
-                    names = set().union(*(
-                        _owner_names(row.get(column)) for column in ("Owners", "Owner", "Members")
-                    ))
-                    if not _matches_owners(names, owners, xowners):
-                        continue
+                if owner_filter and not owner_filter.keeps(card_owner_labels(row, OWNER_COLUMNS)):
+                    continue
                 done_raw = row.get("Done At", "").strip()
                 if not done_raw:
                     continue
@@ -264,10 +295,9 @@ class TxtLoader(ThroughputLoader):
         window_start: date | None = None,
         window_end: date | None = None,
         uniform_size: float | None = None,  # not applicable: values are pre-aggregated
-        owners: list[str] | None = None,
-        xowners: list[str] | None = None,
+        owner_filter: OwnerFilter | None = None,
     ) -> dict[date, float]:
-        if owners or xowners:
+        if owner_filter:
             raise ValueError("--owners/--xowners require card data (CSV or --board), not TXT totals")
         with open(filepath, encoding="utf-8-sig") as f:
             raw = f.read()
@@ -329,8 +359,7 @@ def load_throughput_auto(
     window_start: date | None = None,
     window_end: date | None = None,
     uniform_size: float | None = None,
-    owners: list[str] | None = None,
-    xowners: list[str] | None = None,
+    owner_filter: OwnerFilter | None = None,
     exclude_periods: list[tuple[date, date]] | None = None,
 ) -> dict[date, float]:
     """
@@ -358,5 +387,5 @@ def load_throughput_auto(
         )
         return {}
     weekly = loader.load(filepath, window_weeks, window_start, window_end, uniform_size,
-                         owners=owners, xowners=xowners)
+                         owner_filter=owner_filter)
     return _exclude_periods(weekly, exclude_periods)

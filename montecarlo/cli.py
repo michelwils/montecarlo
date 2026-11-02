@@ -29,7 +29,14 @@ from .kanbanzone_api import (
     fetch_cards_cached,
     write_cards_as_csv,
 )
-from .loaders import LOADERS, _matches_owners, _owner_names, get_loader, load_throughput_auto
+from .loaders import (
+    LOADERS,
+    OWNER_KEYS,
+    OwnerFilter,
+    card_owner_labels,
+    get_loader,
+    load_throughput_auto,
+)
 from .naming import DEFAULT_FILENAME_FORMAT, validate_filename_format
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
@@ -129,7 +136,7 @@ def resolve_weeks(
 
 
 def resolve_data_file(
-    args: argparse.Namespace, s: dict[str, str]
+    args: argparse.Namespace, s: dict[str, str], owner_filter: OwnerFilter | None = None,
 ) -> tuple[str, list[dict] | None]:
     """
     Return (filepath, board_cards) — the throughput file to use, and
@@ -167,18 +174,14 @@ def resolve_data_file(
         except KanbanZoneAPIError as e:
             print(f"\n❌ {s['console_api_error'].format(error=e)}", file=sys.stderr)
             sys.exit(1)
-        if args.owners or args.xowners:
-            cards = [
-                card for card in cards
-                if _matches_owners(
-                    set().union(*(
-                        _owner_names(card.get(field)) for field in ("owners", "owner", "members")
-                    )),
-                    args.owners, args.xowners,
-                )
-            ]
         if cache_age is not None:
             print(f"\n💾 {s['console_cache_hit'].format(minutes=cache_age / 60)}")
+        if owner_filter is None:
+            owner_filter = OwnerFilter(args.owners, args.xowners)
+        if owner_filter:
+            # Filtered here too (not only by the loader) because the
+            # board target (--include-todo/...) is computed from these cards.
+            cards = [card for card in cards if owner_filter.keeps(card_owner_labels(card, OWNER_KEYS))]
         return write_cards_as_csv(cards), cards
 
     if args.file is not None:
@@ -418,7 +421,8 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         parser.error(f"--filename-format: {format_error}")
 
     window_start, window_end = resolve_window(args, parser)
-    fpath, board_cards = resolve_data_file(args, s)
+    owner_filter = OwnerFilter(args.owners, args.xowners)
+    fpath, board_cards = resolve_data_file(args, s, owner_filter)
     source_label = (
         s["console_board_source"].format(board=args.board) if args.board is not None else fpath
     )
@@ -454,8 +458,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
                 window_start=window_start,
                 window_end=window_end,
                 uniform_size=args.uniform_size,
-                owners=args.owners if args.board is None else None,
-                xowners=args.xowners if args.board is None else None,
+                owner_filter=owner_filter,
                 exclude_periods=args.exclude_periods,
             )
         except ValueError as error:

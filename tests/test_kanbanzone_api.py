@@ -131,7 +131,14 @@ class TestCardsToCsvRows:
 
     def test_no_custom_fields_key(self):
         rows = cards_to_csv_rows([{"doneAt": "2026-03-16T14:30:00.000Z"}])
-        assert rows[0] == {"Done At": "2026-03-16"}
+        assert rows[0] == {"Done At": "2026-03-16", "Owners": ""}
+
+    def test_owners_are_carried_over(self):
+        rows = cards_to_csv_rows([
+            {"doneAt": None, "owner": "alice@example.com"},
+            {"doneAt": None, "owners": [{"name": "Bob"}, 42]},
+        ])
+        assert [row["Owners"] for row in rows] == ["alice@example.com", "Bob, 42"]
 
     def test_multiple_cards(self):
         rows = cards_to_csv_rows([
@@ -159,6 +166,7 @@ class TestWriteCardsAsCsv:
                 rows = list(csv.DictReader(f))
             assert rows == [{
                 "Done At": "2026-03-16",
+                "Owners": "",
                 "CF Envergure": "Petit",
                 "CF Prioritaire": "False",
             }]
