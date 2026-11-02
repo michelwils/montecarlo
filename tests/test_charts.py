@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from montecarlo.charts import _draw_sensitivity_chart, make_charts
+from montecarlo.loaders import OwnerFilter
+from montecarlo.simulation import weekly_samples
 from montecarlo.strings import CHART_STRINGS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -63,6 +65,33 @@ class TestSensitivityExclusions:
             assert histories[None] == {date(2026, 1, 5): 1.0, date(2026, 1, 12): 3.0}
             assert axis.get_xticklabels()[-1].get_text() == "2026-01-19"
             assert len(figure.axes[1].patches) == 2
+        finally:
+            plt.close(figure)
+
+    def test_owner_filter_applies_to_sensitivity_history(self, tmp_path, monkeypatch):
+        path = tmp_path / "owners.csv"
+        path.write_text(
+            "Done At,CF Size,Members\n"
+            "2026-01-05,Small,Alice\n2026-01-05,Large,Bob\n2026-01-12,Medium,Alice\n",
+            encoding="utf-8",
+        )
+        histories = []
+
+        def capture_samples(weekly):
+            histories.append(weekly)
+            return weekly_samples(weekly)
+
+        monkeypatch.setattr("montecarlo.charts.weekly_samples", capture_samples)
+        figure, axis = plt.subplots()
+        try:
+            _draw_sensitivity_chart(
+                axis, CHART_STRINGS["en"], filepath=str(path),
+                window_weeks=None, window_start=None, window_end=None,
+                target_score=1, n_workdays=5, n_weeks=1,
+                display_window=None, certainties=[80], annotations={},
+                owner_filter=OwnerFilter(["alice"]),
+            )
+            assert histories[0] == {date(2026, 1, 5): 1.0, date(2026, 1, 12): 3.0}
         finally:
             plt.close(figure)
 

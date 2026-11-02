@@ -11,7 +11,7 @@ import numpy as np
 matplotlib.use("Agg")
 
 from .constants import DEFAULT_OUTPUT_DIR
-from .loaders import _exclude_periods, get_loader, load_throughput_auto
+from .loaders import OwnerFilter, _exclude_periods, get_loader, load_throughput_auto
 from .naming import DEFAULT_FILENAME_FORMAT, render_filename
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
@@ -216,13 +216,14 @@ def _draw_sensitivity_chart(
     unplanned_ratio: float = 0.0,
     uniform_size: float | None = None,
     exclude_periods: list[tuple[date, date]] | None = None,
+    owner_filter: OwnerFilter | None = None,
 ) -> None:
     """Chart 3: probability of delivering vs. history window used."""
     _style_axis(ax3)
 
     full_daily = load_throughput_auto(
         filepath, window_weeks=None, window_start=window_start, window_end=window_end,
-        uniform_size=uniform_size,
+        uniform_size=uniform_size, owner_filter=owner_filter,
     )
     all_daily = _exclude_periods(full_daily, exclude_periods)
     if not all_daily:
@@ -246,7 +247,7 @@ def _draw_sensitivity_chart(
     for w in window_range:
         d = load_throughput_auto(
             filepath, window_weeks=w, window_start=window_start, window_end=window_end,
-            uniform_size=uniform_size,
+            uniform_size=uniform_size, owner_filter=owner_filter,
             exclude_periods=exclude_periods,
         )
         if not d:
@@ -384,6 +385,7 @@ def make_charts(
     title: str | None = None,
     description: str | None = None,
     exclude_periods: list[tuple[date, date]] | None = None,
+    owner_filter: OwnerFilter | None = None,
 ) -> None:
     if certainties is None:
         certainties = [80]
@@ -511,7 +513,7 @@ def make_charts(
         target_score=target_score, n_workdays=n_workdays, n_weeks=n_weeks,
         display_window=display_window, certainties=certainties, annotations=annotations,
         unplanned_ratio=unplanned_ratio, uniform_size=uniform_size,
-        exclude_periods=exclude_periods,
+        exclude_periods=exclude_periods, owner_filter=owner_filter,
     )
 
     target_calendar_date = target_date if target_date is not None else sim_start + timedelta(weeks=n_weeks)

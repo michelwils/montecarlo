@@ -591,6 +591,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             uniform_size=args.uniform_size,
             source_label=source_label,
             exclude_periods=args.exclude_periods,
+            owner_filter=owner_filter,
             tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
             xlarge=args.xlarge, points=args.points,
             board_todo=board_breakdown.get("todo"), board_wip=board_breakdown.get("wip"),
