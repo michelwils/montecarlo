@@ -252,8 +252,13 @@ python monte_carlo.py --board <boardPublicId> -w 12 -l 3 -m 4
 | `--board` | none | The board's public ID (from its URL, e.g. `kanbanzone.io/b/<publicId>`) |
 | `--api-key` | none | API key. **Prefer the `KANBAN_ZONE_API_KEY` environment variable instead** — this flag ends up in shell history and, if used in a config file, in a plaintext file on disk |
 | `--include-archived` | off (active cards only) | Also fetch archived cards |
+| `--cache-ttl` | 15 (minutes) | Reuse cards fetched within this many minutes instead of calling the API again; `0` disables the cache |
+| `--refresh` | off | Ignore the cache and fetch fresh cards (the cache is updated) |
+| `--cache-dir` | `.cache/kanbanzone` | Where cached responses are stored |
 
 `--board` cannot be combined with `-f/--file`. Cards are converted to the same shape as a CSV export (`Done At`, `CF <label>` per custom field — the API's field labels have no `CF ` prefix; it's added back here to match the CSV column-naming convention) and written to a temporary file for the duration of the run, so the exact same parsing, zero-week-filling, and `CF Exception`/`CF Prioritaire` exclusion logic applies either way.
+
+**Caching.** Fetched cards are saved under `.cache/kanbanzone` (gitignored) and reused for 15 minutes, so repeated runs — notably `--configs` with several simulations on the same board — don't hit the API each time. A console message says when cached data is used. The cache holds the full card data but never the API key. Since `--include-todo/--include-wip/--include-backlog` read the board's *current* column states, use `--refresh` (or `--cache-ttl 0`) if cards just moved.
 
 **If your team archives cards once they're done** (common — check by comparing throughput with and without `--include-archived`), the active-only default will undercount historical throughput significantly, since most completed work is no longer "active". `--include-archived` is worth using by default in that case.
 
