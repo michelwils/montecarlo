@@ -458,6 +458,33 @@ class TestLoaderRegistry:
         assert weekly == {date(2026, 3, 16): 1.0}
 
 
+class TestOwnerFilter:
+    @pytest.mark.parametrize("term,label,expected", [
+        ("Alice Smith", "alice smith", True),
+        ("Sébastien Verreault", "sebastien.verreault.1@ulaval.ca", True),
+        ("verreault", "sebastien.verreault.1@ulaval.ca", True),
+        ("sebastien.verreault", "sebastien.verreault.1@ulaval.ca", True),
+        ("SEBASTIEN.VERREAULT.1@ULAVAL.CA", "sebastien.verreault.1@ulaval.ca", True),
+        ("Verreault", "Sébastien Verreault", True),
+        ("Ali", "Alice Smith", False),
+        ("Alice Jones", "Alice Smith", False),
+        ("alice@other.org", "Alice Smith", False),
+        ("alice@other.org", "alice@example.com", False),
+    ])
+    def test_term_matching(self, term, label, expected):
+        assert OwnerFilter([term]).keeps([label]) is expected
+
+    def test_unowned_cards_are_always_kept(self):
+        assert OwnerFilter(["Alice"], ["Bob"]).keeps([])
+
+    def test_exclusion_wins(self):
+        assert not OwnerFilter(["Alice"], ["Bob"]).keeps(["Alice", "Bob"])
+
+    def test_empty_filter_is_falsy(self):
+        assert not OwnerFilter()
+        assert OwnerFilter(xowners=["Bob"])
+
+
 class TestOwnerLabels:
     @pytest.mark.parametrize("value,expected", [
         (None, []), ("", []), ([], []), ({}, []), (False, []),

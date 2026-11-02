@@ -13,7 +13,9 @@ To add a new input format (e.g. Jira, Azure DevOps, Linear…):
    Order matters: the first loader whose match() returns True wins.
 """
 import csv
+import re
 import sys
+import unicodedata
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
@@ -166,30 +168,57 @@ def card_owner_labels(record: dict, fields: tuple[str, ...]) -> list[str]:
 
 
 def _normalize(text: str) -> str:
-    return text.strip().casefold()
+    """Casefold and strip accents, so 'Sébastien' matches 'sebastien'."""
+    decomposed = unicodedata.normalize("NFKD", text.strip().casefold())
+    return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
+def _name_tokens(normalized: str) -> frozenset[str]:
+    """
+    The words of a name, or of an email's local part:
+    'sebastien.verreault.1@ulaval.ca' -> {'sebastien', 'verreault'}.
+    """
+    return frozenset(re.findall(r"[^\W\d_]+", normalized.split("@")[0]))
 
 
 class OwnerFilter:
     """
     --owners/--xowners, normalized once and applied to each card's owner
-    labels. Matching is exact, ignoring case and surrounding whitespace.
+    labels. A term matches an owner when it is the same name or email
+    (ignoring case and accents), or when all its words appear in the
+    owner's name or email local part: 'Sébastien Verreault' and
+    'verreault' both match 'sebastien.verreault.1@ulaval.ca'. A term
+    that is itself an email only matches that exact email.
     """
 
     def __init__(self, owners: list[str] | None = None, xowners: list[str] | None = None):
         self.owners  = list(owners or [])
         self.xowners = list(xowners or [])
-        self._included = {_normalize(t) for t in self.owners}
-        self._excluded = {_normalize(t) for t in self.xowners}
+        self._included = [self._term(t) for t in self.owners]
+        self._excluded = [self._term(t) for t in self.xowners]
 
     def __bool__(self) -> bool:
         return bool(self._included or self._excluded)
+
+    @staticmethod
+    def _term(raw: str) -> tuple[str, frozenset[str] | None]:
+        normalized = _normalize(raw)
+        return normalized, None if "@" in normalized else _name_tokens(normalized)
 
     def keeps(self, labels: list[str]) -> bool:
         """True if a card with these owner labels passes the filter. Unowned cards always do."""
         if not labels:
             return True
-        names = {_normalize(label) for label in labels}
-        return (not self._included or bool(names & self._included)) and not names & self._excluded
+        names = [(normalized, _name_tokens(normalized)) for normalized in map(_normalize, labels)]
+        included = any(self._matches(term, names) for term in self._included)
+        excluded = any(self._matches(term, names) for term in self._excluded)
+        return (not self._included or included) and not excluded
+
+    @staticmethod
+    def _matches(term, names) -> bool:
+        normalized, tokens = term
+        return any(normalized == name or (tokens and tokens <= name_tokens)
+                   for name, name_tokens in names)
 
 
 class KanbanZoneCSVLoader(ThroughputLoader):

@@ -963,3 +963,26 @@ class TestMainEndToEnd:
         assert "Probabilité de livrer" in out
         assert "2026-01-01 au 2026-03-31" in out
         assert " to " not in out
+
+
+class TestOwnerFilterReporting:
+    def _board(self, monkeypatch, cards, *flags):
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *args, **kwargs: cards)
+        monkeypatch.setattr("montecarlo.cli.make_charts", lambda *args, **kwargs: None)
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "--board", "b", "--api-key", "k", "-p", "1", "-w", "2",
+            "-n", "50", *flags,
+        ])
+        main()
+
+    CARDS = [
+        {"owner": "sebastien.verreault.1@ulaval.ca", "doneAt": "2026-03-16T10:00:00Z",
+         "customFields": [{"label": "Size", "value": "Small"}]},
+        {"owner": "laurie.harvey@fsaa.ulaval.ca", "doneAt": "2026-03-16T10:00:00Z",
+         "customFields": [{"label": "Size", "value": "Medium"}]},
+    ]
+
+    def test_full_name_matches_an_api_email(self, monkeypatch, capsys):
+        self._board(monkeypatch, self.CARDS, "--owners", "Sébastien Verreault")
+        captured = capsys.readouterr()
+        assert "1.0 pts/wk." in captured.out
