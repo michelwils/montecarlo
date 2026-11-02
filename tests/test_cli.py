@@ -810,13 +810,9 @@ class TestMainEndToEnd:
         main()
         out = capsys.readouterr().out
         # todo: 5 (Grand, "Start" only — "Backlog" is excluded); wip: 1 + 1 (Petit) = 2 pts; total 7 pts
-        assert "7 pts" in out
-        assert "5 pts To Do (1 cards)" in out
-        assert "2 pts WIP (2 cards)" in out
-        assert (
-            "7 pts  (0×X-Small + 2×Small + 0×Medium + 1×Large + 0×X-Large)"
-            "  (5 pts To Do (1 cards) + 2 pts WIP (2 cards))"
-        ) in out
+        # Board cards are shown once, in the size mix — not repeated as point totals.
+        assert "7 pts  (0×X-Small + 2×Small + 0×Medium + 1×Large + 0×X-Large)\n" in out
+        assert "pts To Do" not in out and "pts WIP" not in out
         assert len(list(tmp_path.glob("*.png"))) == 1
 
     def test_target_summary_combines_manual_and_board_sizes(self, monkeypatch, capsys):
@@ -846,8 +842,7 @@ class TestMainEndToEnd:
         main()
         out = capsys.readouterr().out
         assert (
-            "44 pts  (2×X-Small + 4×Small + 3×Medium + 2×Large + 2×X-Large + 4 direct pts)"
-            "  (17.5 pts To Do (5 cards) + 3 pts WIP (1 cards) + 1 pts Backlog (1 cards))"
+            "44 pts  (2×X-Small + 4×Small + 3×Medium + 2×Large + 2×X-Large + 4 direct pts)\n"
         ) in out
 
     def test_runs_from_an_at_config_file(self, tmp_path, monkeypatch, capsys):

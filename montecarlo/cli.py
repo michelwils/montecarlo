@@ -548,7 +548,11 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             if key not in board_breakdown:
                 continue
             pts, matched, skipped = board_breakdown[key]
-            board_sources.append(s[pts_key].format(n=f"{pts:g}", count=matched))
+            # With board_sizes, these cards are already in the size mix
+            # above; repeating their point total would count them twice
+            # (the chart's Mix applies the same rule).
+            if board_sizes is None:
+                board_sources.append(s[pts_key].format(n=f"{pts:g}", count=matched))
             if skipped:
                 skip_warnings.append(s[skip_key].format(n=skipped))
         sources = f"  ({' + '.join(board_sources)})" if board_sources else ""
