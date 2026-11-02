@@ -480,6 +480,13 @@ class TestOwnerFilter:
     def test_exclusion_wins(self):
         assert not OwnerFilter(["Alice"], ["Bob"]).keeps(["Alice", "Bob"])
 
+    def test_reports_unmatched_terms_and_seen_owners(self):
+        owner_filter = OwnerFilter(["Alice", "Nobody"], ["Ghost"])
+        owner_filter.keeps(["alice@example.com"])
+        owner_filter.keeps(["Bob"])
+        assert owner_filter.unmatched() == [("--owners", "Nobody"), ("--xowners", "Ghost")]
+        assert sorted(owner_filter.seen.values()) == ["Bob", "alice@example.com"]
+
     def test_empty_filter_is_falsy(self):
         assert not OwnerFilter()
         assert OwnerFilter(xowners=["Bob"])

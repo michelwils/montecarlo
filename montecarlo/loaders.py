@@ -189,6 +189,9 @@ class OwnerFilter:
     owner's name or email local part: 'Sébastien Verreault' and
     'verreault' both match 'sebastien.verreault.1@ulaval.ca'. A term
     that is itself an email only matches that exact email.
+
+    It also records which terms matched and which owners were seen, so
+    the caller can warn about a term that matched nothing.
     """
 
     def __init__(self, owners: list[str] | None = None, xowners: list[str] | None = None):
@@ -196,6 +199,8 @@ class OwnerFilter:
         self.xowners = list(xowners or [])
         self._included = [self._term(t) for t in self.owners]
         self._excluded = [self._term(t) for t in self.xowners]
+        self._matched: set[tuple[str, int]] = set()  # (flag, index) of matched terms
+        self.seen: dict[str, str] = {}   # normalized owner -> first label seen
 
     def __bool__(self) -> bool:
         return bool(self._included or self._excluded)
@@ -209,16 +214,32 @@ class OwnerFilter:
         """True if a card with these owner labels passes the filter. Unowned cards always do."""
         if not labels:
             return True
-        names = [(normalized, _name_tokens(normalized)) for normalized in map(_normalize, labels)]
-        included = any(self._matches(term, names) for term in self._included)
-        excluded = any(self._matches(term, names) for term in self._excluded)
+        names = []
+        for label in labels:
+            normalized = _normalize(label)
+            self.seen.setdefault(normalized, label)
+            names.append((normalized, _name_tokens(normalized)))
+        included = self._hits("--owners", self._included, names)
+        excluded = self._hits("--xowners", self._excluded, names)
         return (not self._included or included) and not excluded
 
-    @staticmethod
-    def _matches(term, names) -> bool:
-        normalized, tokens = term
-        return any(normalized == name or (tokens and tokens <= name_tokens)
-                   for name, name_tokens in names)
+    def _hits(self, flag: str, terms, names) -> bool:
+        hit = False
+        for index, (normalized, tokens) in enumerate(terms):
+            if any(normalized == name or (tokens and tokens <= name_tokens)
+                   for name, name_tokens in names):
+                self._matched.add((flag, index))
+                hit = True
+        return hit
+
+    def unmatched(self) -> list[tuple[str, str]]:
+        """(flag, term) for every term that matched no owner seen so far."""
+        return [
+            (flag, raw)
+            for flag, raws in (("--owners", self.owners), ("--xowners", self.xowners))
+            for index, raw in enumerate(raws)
+            if (flag, index) not in self._matched
+        ]
 
 
 class KanbanZoneCSVLoader(ThroughputLoader):

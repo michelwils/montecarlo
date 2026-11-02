@@ -986,3 +986,11 @@ class TestOwnerFilterReporting:
         self._board(monkeypatch, self.CARDS, "--owners", "Sébastien Verreault")
         captured = capsys.readouterr()
         assert "1.0 pts/wk." in captured.out
+        assert "matches no card owner" not in captured.err
+
+    def test_unmatched_term_warns_with_the_owners_found(self, monkeypatch, capsys):
+        self._board(monkeypatch, self.CARDS, "--owners", "verreault", "--xowners", "Nobody")
+        err = capsys.readouterr().err
+        assert "--xowners 'Nobody' matches no card owner" in err
+        assert "--owners 'verreault'" not in err
+        assert "laurie.harvey@fsaa.ulaval.ca, sebastien.verreault.1@ulaval.ca" in err

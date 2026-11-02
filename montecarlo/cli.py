@@ -86,6 +86,22 @@ def _parse_excluded_period(value: str) -> tuple[date, date]:
     return start, end
 
 
+def _warn_unmatched_owners(owner_filter: OwnerFilter, s: dict[str, str]) -> None:
+    """
+    Warn about each --owners/--xowners term that matched no card owner,
+    listing the owners actually found, so a typo or a name-vs-email
+    mismatch doesn't silently forecast from the wrong cards.
+    """
+    unmatched = owner_filter.unmatched()
+    if not unmatched:
+        return
+    seen = sorted(owner_filter.seen.values(), key=str.casefold)
+    found = ", ".join(seen[:15]) + (", …" if len(seen) > 15 else "") if seen else s["none_val"]
+    for flag, term in unmatched:
+        print(f"⚠️  {s['console_owner_unmatched'].format(flag=flag, term=term)}", file=sys.stderr)
+    print(f"   {s['console_owners_found'].format(owners=found)}", file=sys.stderr)
+
+
 def resolve_window(
     args: argparse.Namespace, parser: argparse.ArgumentParser
 ) -> tuple[date | None, date | None]:
@@ -463,6 +479,7 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             )
         except ValueError as error:
             parser.error(str(error))
+        _warn_unmatched_owners(owner_filter, s)
         if not daily:
             print(f"❌ {s['console_could_not_load']}", file=sys.stderr)
             sys.exit(1)

@@ -95,6 +95,8 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "console_api_error":          "{error}",
         "console_board_source":       "Kanban Zone API (board {board})",
         "console_cache_hit":          "Using cached board data ({minutes:.0f} min old) — use --refresh to fetch fresh cards.",
+        "console_owner_unmatched":    "{flag} '{term}' matches no card owner — check the spelling (names, emails and parts of emails are accepted).",
+        "console_owners_found":       "Owners found: {owners}",
     },
     "fr": {
         # Titre de la figure
@@ -184,5 +186,7 @@ CHART_STRINGS: dict[str, dict[str, str]] = {
         "console_api_error":          "{error}",
         "console_board_source":       "API Kanban Zone (tableau {board})",
         "console_cache_hit":          "Données du tableau en cache ({minutes:.0f} min) — utilisez --refresh pour récupérer des cartes à jour.",
+        "console_owner_unmatched":    "{flag} « {term} » ne correspond à aucun propriétaire de carte — vérifiez l'orthographe (noms, courriels et parties de courriel acceptés).",
+        "console_owners_found":       "Propriétaires trouvés : {owners}",
     },
 }
