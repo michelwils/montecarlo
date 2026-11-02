@@ -88,7 +88,7 @@ def _fill_zero_weeks(
     return filled
 
 
-def _apply_window_weeks(
+def apply_window_weeks(
     weekly: dict[date, float], window_weeks: int | None
 ) -> dict[date, float]:
     """Keep only the most recent `window_weeks` weeks, if set."""
@@ -322,7 +322,7 @@ class KanbanZoneCSVLoader(ThroughputLoader):
             weekly[monday] += v
 
         weekly = _fill_zero_weeks(weekly, start=window_start, end=window_end)
-        weekly = _apply_window_weeks(weekly, window_weeks)
+        weekly = apply_window_weeks(weekly, window_weeks)
 
         return dict(weekly)
 
@@ -369,7 +369,7 @@ class TxtLoader(ThroughputLoader):
                 if (window_start is None or monday >= window_start)
                 and (window_end is None or monday <= window_end)
             }
-        return _apply_window_weeks(weekly, window_weeks)
+        return apply_window_weeks(weekly, window_weeks)
 
 
 # Loader registry — order matters: first match() wins.
@@ -388,9 +388,10 @@ def get_loader(filepath: str) -> ThroughputLoader | None:
     return None
 
 
-def _exclude_periods(
+def drop_excluded_weeks(
     weekly: dict[date, float], periods: list[tuple[date, date]] | None,
 ) -> dict[date, float]:
+    """Remove every calendar week touched by one of the inclusive date ranges."""
     if not periods:
         return weekly
     excluded_weeks = [
@@ -438,4 +439,4 @@ def load_throughput_auto(
         return {}
     weekly = loader.load(filepath, window_weeks, window_start, window_end, uniform_size,
                          owner_filter=owner_filter)
-    return _exclude_periods(weekly, exclude_periods)
+    return drop_excluded_weeks(weekly, exclude_periods)

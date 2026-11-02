@@ -11,7 +11,13 @@ import numpy as np
 matplotlib.use("Agg")
 
 from .constants import DEFAULT_OUTPUT_DIR
-from .loaders import OwnerFilter, _exclude_periods, get_loader, load_throughput_auto
+from .loaders import (
+    OwnerFilter,
+    apply_window_weeks,
+    drop_excluded_weeks,
+    get_loader,
+    load_throughput_auto,
+)
 from .naming import DEFAULT_FILENAME_FORMAT, render_filename
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
@@ -221,11 +227,13 @@ def _draw_sensitivity_chart(
     """Chart 3: probability of delivering vs. history window used."""
     _style_axis(ax3)
 
+    # Loaded once; each window below is cut from it in memory, the same
+    # way the loader would (window on the full history, then exclusions).
     full_daily = load_throughput_auto(
         filepath, window_weeks=None, window_start=window_start, window_end=window_end,
         uniform_size=uniform_size, owner_filter=owner_filter,
     )
-    all_daily = _exclude_periods(full_daily, exclude_periods)
+    all_daily = drop_excluded_weeks(full_daily, exclude_periods)
     if not all_daily:
         ax3.text(0.5, 0.5, s["no_data"], ha="center", va="center",
                  transform=ax3.transAxes, color=C_SUBTEXT)
@@ -245,11 +253,7 @@ def _draw_sensitivity_chart(
     probs = []
     rng_chart = np.random.default_rng(42)
     for w in window_range:
-        d = load_throughput_auto(
-            filepath, window_weeks=w, window_start=window_start, window_end=window_end,
-            uniform_size=uniform_size, owner_filter=owner_filter,
-            exclude_periods=exclude_periods,
-        )
+        d = drop_excluded_weeks(apply_window_weeks(full_daily, w), exclude_periods)
         if not d:
             probs.append(0.0)
             continue

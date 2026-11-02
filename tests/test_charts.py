@@ -42,15 +42,18 @@ class TestSensitivityExclusions:
             ("2026-01-05", "Small"), ("2026-01-12", "Medium"), ("2026-01-19", "Large"),
         ])
         periods = [(date(2026, 1, 19), date(2026, 1, 19))]
-        histories = {}
+        loads, histories = [], []
 
         def capture_load(filepath, window_weeks, **kwargs):
-            weekly = load_throughput_auto(filepath, window_weeks, **kwargs)
-            if kwargs.get("exclude_periods"):
-                histories[window_weeks] = weekly
-            return weekly
+            loads.append(window_weeks)
+            return load_throughput_auto(filepath, window_weeks, **kwargs)
+
+        def capture_samples(weekly):
+            histories.append(weekly)
+            return weekly_samples(weekly)
 
         monkeypatch.setattr("montecarlo.charts.load_throughput_auto", capture_load)
+        monkeypatch.setattr("montecarlo.charts.weekly_samples", capture_samples)
         figure, axis = plt.subplots()
         try:
             _draw_sensitivity_chart(
@@ -60,9 +63,14 @@ class TestSensitivityExclusions:
                 display_window=None, certainties=[80], annotations={},
                 exclude_periods=periods,
             )
-            assert histories[1] == {}
-            assert histories[2] == {date(2026, 1, 12): 3.0}
-            assert histories[None] == {date(2026, 1, 5): 1.0, date(2026, 1, 12): 3.0}
+            # The file is read once; windows (All, 3, 2, 1 weeks) are cut in
+            # memory. The 1-week window is fully excluded, so it isn't simulated.
+            assert loads == [None]
+            assert histories == [
+                {date(2026, 1, 5): 1.0, date(2026, 1, 12): 3.0},
+                {date(2026, 1, 5): 1.0, date(2026, 1, 12): 3.0},
+                {date(2026, 1, 12): 3.0},
+            ]
             assert axis.get_xticklabels()[-1].get_text() == "2026-01-19"
             assert len(figure.axes[1].patches) == 2
         finally:
