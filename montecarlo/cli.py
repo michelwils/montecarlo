@@ -33,6 +33,7 @@ from .loaders import (
     LOADERS,
     OWNER_KEYS,
     OwnerFilter,
+    OwnerFilterError,
     card_owner_labels,
     get_loader,
     load_throughput_auto,
@@ -477,8 +478,12 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
                 owner_filter=owner_filter,
                 exclude_periods=args.exclude_periods,
             )
-        except ValueError as error:
+        except OwnerFilterError as error:
             parser.error(str(error))
+        except ValueError as error:
+            print(f"❌ {s['console_data_error'].format(path=source_label, error=error)}",
+                  file=sys.stderr)
+            sys.exit(1)
         _warn_unmatched_owners(owner_filter, s)
         if not daily:
             print(f"❌ {s['console_could_not_load']}", file=sys.stderr)

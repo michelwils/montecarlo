@@ -996,3 +996,13 @@ class TestOwnerFilterReporting:
         out = capsys.readouterr().out
         assert "verreault except harvey" in out
         assert "2026-01-05 → 2026-01-11" in out
+
+    def test_malformed_txt_is_a_data_error_not_a_usage_error(self, tmp_path, monkeypatch, capsys):
+        path = tmp_path / "throughput.txt"
+        path.write_text("3,4,x,5", encoding="utf-8")
+        monkeypatch.setattr("sys.argv", ["monte_carlo.py", "-f", str(path), "-p", "1", "-w", "2"])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "Could not read" in err and "usage:" not in err

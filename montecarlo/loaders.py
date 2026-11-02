@@ -55,7 +55,7 @@ class ThroughputLoader:
         with no size categorization at all — see KanbanZoneCSVLoader).
         owner_filter, when active, keeps only the cards it accepts
         (see OwnerFilter); loaders without card ownership raise
-        ValueError.
+        OwnerFilterError.
         """
         raise NotImplementedError
 
@@ -135,6 +135,10 @@ def _is_unplanned(row: dict[str, str]) -> bool:
 # Columns (CSV export) and keys (API cards) that name a card's owners.
 OWNER_COLUMNS = ("Owners", "Owner", "Members")
 OWNER_KEYS    = ("owners", "owner", "members")
+
+
+class OwnerFilterError(ValueError):
+    """--owners/--xowners can't be applied to this data source."""
 
 
 def owner_labels(value) -> list[str]:
@@ -286,7 +290,7 @@ class KanbanZoneCSVLoader(ThroughputLoader):
         with open(filepath, newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             if owner_filter and not set(OWNER_COLUMNS).intersection(reader.fieldnames or []):
-                raise ValueError("--owners/--xowners require an Owners, Owner, or Members CSV column")
+                raise OwnerFilterError("--owners/--xowners require an Owners, Owner, or Members CSV column")
             for row in reader:
                 if owner_filter and not owner_filter.keeps(card_owner_labels(row, OWNER_COLUMNS)):
                     continue
@@ -348,7 +352,7 @@ class TxtLoader(ThroughputLoader):
         owner_filter: OwnerFilter | None = None,
     ) -> dict[date, float]:
         if owner_filter:
-            raise ValueError("--owners/--xowners require card data (CSV or --board), not TXT totals")
+            raise OwnerFilterError("--owners/--xowners require card data (CSV or --board), not TXT totals")
         with open(filepath, encoding="utf-8-sig") as f:
             raw = f.read()
         values = [float(v.strip()) for v in raw.split(",") if v.strip() != ""]
