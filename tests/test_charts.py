@@ -4,7 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from montecarlo.charts import _draw_sensitivity_chart, make_charts
+from montecarlo.charts import _draw_sensitivity_chart, make_charts, owner_filter_label
 from montecarlo.loaders import OwnerFilter
 from montecarlo.simulation import weekly_samples
 from montecarlo.strings import CHART_STRINGS
@@ -32,6 +32,23 @@ class TestChartStrings:
         for lang, table in CHART_STRINGS.items():
             for key in ("size_tiny", "size_small", "size_medium", "size_large", "size_xlarge"):
                 assert key in table, f"{lang} table is missing '{key}'"
+
+
+class TestOwnerFilterLabel:
+    FR = CHART_STRINGS["fr"]
+
+    def test_inline_for_the_console(self):
+        assert owner_filter_label(["Alice", "Bob"], ["Carl"], self.FR) == "Alice, Bob sauf Carl"
+
+    def test_one_owner_per_line_for_the_chart_panel(self):
+        assert owner_filter_label(["Alice", "Bob"], ["Carl", "Dana"], self.FR,
+                                  one_per_line=True) == "Alice\nBob\nsauf Carl\nsauf Dana"
+
+    def test_exclusions_only(self):
+        assert owner_filter_label(None, ["Carl"], self.FR, one_per_line=True) == "tous\nsauf Carl"
+
+    def test_no_filter(self):
+        assert owner_filter_label(None, None, self.FR, one_per_line=True) is None
 
 
 class TestSensitivityExclusions:

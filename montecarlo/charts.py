@@ -28,10 +28,18 @@ from .theme import (
 
 
 def owner_filter_label(owners: list[str] | None, xowners: list[str] | None,
-                       s: dict[str, str]) -> str | None:
-    """'Alice, Bob except Bob' / 'all except Bob', or None when no filter is set."""
+                       s: dict[str, str], one_per_line: bool = False) -> str | None:
+    """
+    'Alice, Bob except Bob' / 'all except Bob', or None when no filter is
+    set. one_per_line puts each owner on its own line ('except Bob' for
+    exclusions), for the narrow chart panel.
+    """
     if not owners and not xowners:
         return None
+    if one_per_line:
+        lines = list(owners or []) or [s["owners_all"]]
+        lines += [f"{s['owners_except']} {name}" for name in xowners or []]
+        return "\n".join(lines)
     label = ", ".join(owners) if owners else s["owners_all"]
     if xowners:
         label += f" {s['owners_except']} " + ", ".join(xowners)
@@ -521,7 +529,7 @@ def make_charts(
         excluded_str=excluded_periods_label(exclude_periods, separator="\n"),
         owners_str=owner_filter_label(
             owner_filter.owners if owner_filter else None,
-            owner_filter.xowners if owner_filter else None, s,
+            owner_filter.xowners if owner_filter else None, s, one_per_line=True,
         ),
     )
 
