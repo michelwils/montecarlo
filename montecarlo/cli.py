@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from .annotations import load_annotations
-from .charts import make_charts
+from .charts import excluded_periods_label, make_charts, owner_filter_label
 from .constants import (
     DEFAULT_ANNOTATIONS_FILE,
     DEFAULT_CACHE_DIR,
@@ -29,7 +29,15 @@ from .kanbanzone_api import (
     fetch_cards_cached,
     write_cards_as_csv,
 )
-from .loaders import LOADERS, get_loader, load_throughput_auto
+from .loaders import (
+    LOADERS,
+    OWNER_KEYS,
+    OwnerFilter,
+    OwnerFilterError,
+    card_owner_labels,
+    get_loader,
+    load_throughput_auto,
+)
 from .naming import DEFAULT_FILENAME_FORMAT, validate_filename_format
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
@@ -62,6 +70,37 @@ def compute_target_score(args: argparse.Namespace) -> float:
         + args.xlarge * SCORES["X-Large"]
         + args.points
     )
+
+
+def _parse_excluded_period(value: str) -> tuple[date, date]:
+    try:
+        start_raw, end_raw = value.split(":")
+        start, end = date.fromisoformat(start_raw), date.fromisoformat(end_raw)
+        if start.isoformat() != start_raw or end.isoformat() != end_raw:
+            raise ValueError
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "--exclude-periods ranges must use YYYY-MM-DD:YYYY-MM-DD"
+        ) from None
+    if end < start:
+        raise argparse.ArgumentTypeError("--exclude-periods end must be on or after start")
+    return start, end
+
+
+def _warn_unmatched_owners(owner_filter: OwnerFilter, s: dict[str, str]) -> None:
+    """
+    Warn about each --owners/--xowners term that matched no card owner,
+    listing the owners actually found, so a typo or a name-vs-email
+    mismatch doesn't silently forecast from the wrong cards.
+    """
+    unmatched = owner_filter.unmatched()
+    if not unmatched:
+        return
+    seen = sorted(owner_filter.seen.values(), key=str.casefold)
+    found = ", ".join(seen[:15]) + (", …" if len(seen) > 15 else "") if seen else s["none_val"]
+    for flag, term in unmatched:
+        print(f"⚠️  {s['console_owner_unmatched'].format(flag=flag, term=term)}", file=sys.stderr)
+    print(f"   {s['console_owners_found'].format(owners=found)}", file=sys.stderr)
 
 
 def resolve_window(
@@ -114,7 +153,7 @@ def resolve_weeks(
 
 
 def resolve_data_file(
-    args: argparse.Namespace, s: dict[str, str]
+    args: argparse.Namespace, s: dict[str, str], owner_filter: OwnerFilter | None = None,
 ) -> tuple[str, list[dict] | None]:
     """
     Return (filepath, board_cards) — the throughput file to use, and
@@ -154,6 +193,12 @@ def resolve_data_file(
             sys.exit(1)
         if cache_age is not None:
             print(f"\n💾 {s['console_cache_hit'].format(minutes=cache_age / 60)}")
+        if owner_filter is None:
+            owner_filter = OwnerFilter(args.owners, args.xowners)
+        if owner_filter:
+            # Filtered here too (not only by the loader) because the
+            # board target (--include-todo/...) is computed from these cards.
+            cards = [card for card in cards if owner_filter.keeps(card_owner_labels(card, OWNER_KEYS))]
         return write_cards_as_csv(cards), cards
 
     if args.file is not None:
@@ -215,6 +260,18 @@ class _ConfigArgumentParser(argparse.ArgumentParser):
         return [dbl or sgl or bare for dbl, sgl, bare in _CONFIG_TOKEN_RE.findall(line)]
 
 
+class _StoreDuration(argparse.Action):
+    """
+    -w/--weeks and -e/--target-date are two ways to set the same duration,
+    so setting one clears the other: the last one given wins. This is what
+    lets a command-line flag override the other one set in an @config file.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        setattr(namespace, "target_date" if self.dest == "weeks" else "weeks", None)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = _ConfigArgumentParser(
         description="Monte Carlo simulation for software delivery forecasting.",
@@ -238,6 +295,18 @@ def build_parser() -> argparse.ArgumentParser:
                         "key isn't stored in shell history or a config file.")
     p.add_argument("--include-archived", action="store_true",
                    help="With --board, also fetch archived cards (default: active cards only)")
+    p.add_argument("--owners", nargs="+", default=None, metavar="OWNER",
+                   help="Keep cards matching any listed owner (case-insensitive). "
+                        "Unowned cards are kept in the history, but left out of a board-derived "
+                        "target (see --include-unowned). Quote names containing spaces. "
+                        "Applies to CSV and --board.")
+    p.add_argument("--xowners", nargs="+", default=None, metavar="OWNER",
+                   help="Exclude cards matching any listed owner (case-insensitive). "
+                        "Takes precedence over --owners. Unowned cards are treated as with --owners.")
+    p.add_argument("--include-unowned", action="store_true",
+                   help="With --owners/--xowners, also count unowned cards in the target from "
+                        "--include-todo/--include-wip/--include-backlog (default: left out, so "
+                        "unassigned work isn't added to every owner's forecast).")
     p.add_argument("--cache-ttl", type=float, default=DEFAULT_CACHE_TTL_MINUTES,
                    metavar="MINUTES",
                    help="With --board, reuse cards fetched within the last MINUTES minutes "
@@ -265,9 +334,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Count every completed card as worth this many points, ignoring "
                         "CF Size/CF Envergure entirely — for a Kanban Zone CSV/API source "
                         "with no size field, where every card is treated as equivalent.")
-    p.add_argument("-w", "--weeks", type=int, default=None,
-                   help="Simulation duration in weeks (required, unless -e/--target-date is used)")
-    p.add_argument("-e", "--target-date", type=str, default=None,
+    p.add_argument("-w", "--weeks", type=int, default=None, action=_StoreDuration,
+                   help="Simulation duration in weeks (required, unless -e/--target-date is used). "
+                        "Whichever of -w/-e comes last wins, so either one on the command line "
+                        "overrides the other in an @config file.")
+    p.add_argument("-e", "--target-date", type=str, default=None, action=_StoreDuration,
                    help="Target delivery date (YYYY-MM-DD) instead of -w/--weeks; "
                         "weeks is derived as the ceiling of (target date - start date) / 7 days")
     p.add_argument("-W", "--window", type=int, default=None,
@@ -278,6 +349,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--window-end", type=str, default=None,
                    help="Last completion date included in historical data (YYYY-MM-DD); "
                         "if --window-start is omitted, data starts from the earliest available date")
+    p.add_argument("--exclude-periods", type=_parse_excluded_period, nargs="+", default=None,
+                   metavar="START:END",
+                   help="Exclude inclusive YYYY-MM-DD:YYYY-MM-DD ranges from history. "
+                        "Every calendar week touched is removed after selecting the history "
+                        "window, without replacement. Accepts multiple ranges.")
     p.add_argument("-G", "--chart-weeks", type=int, default=26,
                    metavar="N",
                    help="Weeks shown in the bottom chart (default: 26 ≈ 6 months, 0 = all)")
@@ -366,9 +442,6 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         parser.print_help()
         sys.exit(1)
 
-    if args.weeks is not None and args.target_date is not None:
-        parser.error("--weeks and --target-date cannot be used together")
-
     if args.cache_ttl < 0:
         parser.error("--cache-ttl must be 0 or greater")
 
@@ -381,20 +454,35 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         parser.error(f"--filename-format: {format_error}")
 
     window_start, window_end = resolve_window(args, parser)
-    fpath, board_cards = resolve_data_file(args, s)
+    owner_filter = OwnerFilter(args.owners, args.xowners)
+    fpath, board_cards = resolve_data_file(args, s, owner_filter)
     source_label = (
         s["console_board_source"].format(board=args.board) if args.board is not None else fpath
     )
 
+    unowned_left_out = 0
     if include_board:
+        target_cards = board_cards
+        if owner_filter and not args.include_unowned:
+            # Unowned cards stay in the history (the team delivered them),
+            # but aren't anyone's upcoming work: counting them would add the
+            # same unassigned cards to every owner's target.
+            target_cards = [c for c in board_cards if card_owner_labels(c, OWNER_KEYS)]
+            unowned = [c for c in board_cards if not card_owner_labels(c, OWNER_KEYS)]
+            unowned_left_out = sum(
+                matched + skipped for _pts, matched, skipped in compute_board_target(
+                    unowned, args.include_todo, args.include_wip, args.uniform_size,
+                    include_backlog=args.include_backlog,
+                ).values()
+            )
         board_breakdown = compute_board_target(
-            board_cards, args.include_todo, args.include_wip, args.uniform_size,
+            target_cards, args.include_todo, args.include_wip, args.uniform_size,
             include_backlog=args.include_backlog,
         )
         target_score += sum(pts for pts, _matched, _skipped in board_breakdown.values())
         if args.uniform_size is None:
             board_sizes = count_board_sizes(
-                board_cards, args.include_todo, args.include_wip, args.include_backlog
+                target_cards, args.include_todo, args.include_wip, args.include_backlog
             )
         if target_score == 0:
             parser.print_help()
@@ -410,13 +498,23 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             sys.exit(1)
 
         # Load throughput
-        daily = load_throughput_auto(
-            fpath,
-            window_weeks=args.window,
-            window_start=window_start,
-            window_end=window_end,
-            uniform_size=args.uniform_size,
-        )
+        try:
+            daily = load_throughput_auto(
+                fpath,
+                window_weeks=args.window,
+                window_start=window_start,
+                window_end=window_end,
+                uniform_size=args.uniform_size,
+                owner_filter=owner_filter,
+                exclude_periods=args.exclude_periods,
+            )
+        except OwnerFilterError as error:
+            parser.error(str(error))
+        except ValueError as error:
+            print(f"❌ {s['console_data_error'].format(path=source_label, error=error)}",
+                  file=sys.stderr)
+            sys.exit(1)
+        _warn_unmatched_owners(owner_filter, s)
         if not daily:
             print(f"❌ {s['console_could_not_load']}", file=sys.stderr)
             sys.exit(1)
@@ -459,17 +557,30 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         else:
             history_window = f"{args.window} {s['console_weeks_word']}"
         print(f"   {s['param_window']:<{label_width}}: {history_window}")
+        for label_key, value in (
+            ("param_excluded", excluded_periods_label(args.exclude_periods)),
+            ("param_owners", owner_filter_label(args.owners, args.xowners, s)),
+        ):
+            if value is not None:
+                print(f"   {s[label_key]:<{label_width}}: {value}")
         print(f"   {s['param_certainties']:<{label_width}}: {', '.join(str(c)+'%' for c in sorted(args.certainties))}")
+        size_counts = {
+            "X-Small": args.tiny, "Small": args.small, "Medium": args.medium,
+            "Large": args.large, "X-Large": args.xlarge,
+        }
+        for tier, count in (board_sizes or {}).items():
+            size_counts[tier] += count
         mix = " + ".join(
-            f"{n}×{label}" for n, label in (
-                (args.tiny, s["size_tiny"]), (args.small, s["size_small"]),
-                (args.medium, s["size_medium"]), (args.large, s["size_large"]),
-                (args.xlarge, s["size_xlarge"]),
+            f"{size_counts[tier]}×{label}" for tier, label in (
+                ("X-Small", s["size_tiny"]), ("Small", s["size_small"]),
+                ("Medium", s["size_medium"]), ("Large", s["size_large"]),
+                ("X-Large", s["size_xlarge"]),
             )
         )
         if args.points:
             mix += " + " + s["console_direct_pts"].format(n=args.points)
         skip_warnings = []
+        board_sources = []
         for key, pts_key, skip_key in (
             ("todo", "console_board_todo_pts", "console_board_todo_skipped"),
             ("wip", "console_board_wip_pts", "console_board_wip_skipped"),
@@ -478,10 +589,17 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             if key not in board_breakdown:
                 continue
             pts, matched, skipped = board_breakdown[key]
-            mix += " + " + s[pts_key].format(n=f"{pts:g}", count=matched)
+            # With board_sizes, these cards are already in the size mix
+            # above; repeating their point total would count them twice
+            # (the chart's Mix applies the same rule).
+            if board_sizes is None:
+                board_sources.append(s[pts_key].format(n=f"{pts:g}", count=matched))
             if skipped:
                 skip_warnings.append(s[skip_key].format(n=skipped))
-        print(f"   {s['param_target']:<{label_width}}: {target_score:g} pts  ({mix})")
+        if unowned_left_out:
+            skip_warnings.append(s["console_board_unowned_skipped"].format(n=unowned_left_out))
+        sources = f"  ({' + '.join(board_sources)})" if board_sources else ""
+        print(f"   {s['param_target']:<{label_width}}: {target_score:g} pts  ({mix}){sources}")
         for warning in skip_warnings:
             print(f"   ⚠️  {warning}")
         print(f"   {s['console_source_weeks_label']:<{label_width}}: "
@@ -519,6 +637,8 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
             unplanned_ratio=args.unplanned_ratio,
             uniform_size=args.uniform_size,
             source_label=source_label,
+            exclude_periods=args.exclude_periods,
+            owner_filter=owner_filter,
             tiny=args.tiny, small=args.small, medium=args.medium, large=args.large,
             xlarge=args.xlarge, points=args.points,
             board_todo=board_breakdown.get("todo"), board_wip=board_breakdown.get("wip"),

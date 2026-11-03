@@ -50,7 +50,7 @@ import urllib.error
 import urllib.request
 
 from .constants import ALL_SCORES, SIZE_TIERS
-from .loaders import _SIZE_COLUMNS, _get_field
+from .loaders import OWNER_KEYS, _SIZE_COLUMNS, _get_field, card_owner_labels
 
 BASE_URL = "https://integrations.kanbanzone.io/v1"
 PAGE_SIZE = 100
@@ -197,14 +197,18 @@ def fetch_cards_cached(
 def cards_to_csv_rows(cards: list[dict]) -> list[dict[str, str]]:
     """
     Adapt raw CardItem dicts into rows shaped like a Kanban Zone CSV
-    export: {"Done At": ..., "CF <Label>": ...}. Only completion date
-    and custom fields are carried over — title, description, owner,
-    etc. are not needed for throughput and are dropped here.
+    export: {"Done At": ..., "Owners": ..., "CF <Label>": ...}. Only
+    completion date, owners (for --owners/--xowners) and custom fields
+    are carried over — title, description, etc. are not needed for
+    throughput and are dropped here.
     """
     rows = []
     for card in cards:
         done_at = card.get("doneAt")
-        row: dict[str, str] = {"Done At": done_at[:10] if done_at else ""}
+        row: dict[str, str] = {
+            "Done At": done_at[:10] if done_at else "",
+            "Owners": ", ".join(card_owner_labels(card, OWNER_KEYS)),
+        }
         for cf in card.get("customFields") or []:
             label = (cf.get("label") or "").strip()
             if label:
@@ -221,7 +225,7 @@ def write_cards_as_csv(cards: list[dict]) -> str:
     """
     rows = cards_to_csv_rows(cards)
 
-    fieldnames: list[str] = ["Done At"]
+    fieldnames: list[str] = ["Done At", "Owners"]
     seen = set(fieldnames)
     for row in rows:
         for key in row:

@@ -6,6 +6,7 @@ import pytest
 from montecarlo.loaders import (
     KanbanZoneCSVLoader,
     LOADERS,
+    OwnerFilter,
     ThroughputLoader,
     TxtLoader,
     _fill_zero_weeks,
@@ -13,6 +14,7 @@ from montecarlo.loaders import (
     _is_unplanned,
     get_loader,
     load_throughput_auto,
+    owner_labels,
 )
 
 
@@ -77,6 +79,49 @@ class TestFillZeroWeeks:
         }
 
 
+class TestExcludePeriods:
+    @pytest.mark.parametrize("periods,remaining", [
+        (None, [5, 12, 19, 26]),
+        ([(7, 7)], [12, 19, 26]),
+        ([(11, 12)], [19, 26]),
+        ([(7, 14), (12, 20)], [26]),
+        ([(1, 31)], []),
+    ])
+    def test_removes_whole_weeks(self, kanban_csv, periods, remaining):
+        path = kanban_csv([(f"2026-01-{day:02d}", "Small") for day in [5, 12, 19, 26]])
+        exclusions = None if periods is None else [
+            (date(2026, 1, start), date(2026, 1, end)) for start, end in periods
+        ]
+        weekly = load_throughput_auto(path, None, exclude_periods=exclusions)
+        assert weekly == {date(2026, 1, day): 1.0 for day in remaining}
+
+    def test_applies_after_window_without_backfill(self, kanban_csv):
+        path = kanban_csv([(f"2026-01-{day:02d}", "Small") for day in [5, 12, 19]])
+        weekly = load_throughput_auto(
+            path, 2, exclude_periods=[(date(2026, 1, 19), date(2026, 1, 19))],
+        )
+        assert weekly == {date(2026, 1, 12): 1.0}
+
+    def test_excluded_zero_week_is_not_refilled(self, kanban_csv):
+        path = kanban_csv([("2026-01-19", "Small")])
+        weekly = load_throughput_auto(
+            path, None, window_start=date(2026, 1, 5), window_end=date(2026, 1, 25),
+            exclude_periods=[(date(2026, 1, 12), date(2026, 1, 18))],
+        )
+        assert weekly == {date(2026, 1, 5): 0.0, date(2026, 1, 19): 1.0}
+
+    def test_txt_exclusions_apply_after_window(self, tmp_path):
+        from datetime import timedelta
+
+        path = tmp_path / "throughput.txt"
+        path.write_text("1,2,3", encoding="utf-8")
+        latest = max(load_throughput_auto(str(path), None))
+        weekly = load_throughput_auto(
+            str(path), 2, exclude_periods=[(latest, latest + timedelta(days=6))],
+        )
+        assert weekly == {latest - timedelta(weeks=1): 2.0}
+
+
 class TestThroughputLoaderBase:
     def test_match_uses_extension_allowlist(self):
         loader = ThroughputLoader()
@@ -91,6 +136,49 @@ class TestThroughputLoaderBase:
 
 
 class TestKanbanZoneCSVLoader:
+    @pytest.mark.parametrize("owners,xowners,expected", [
+        (None, None, 10.0),
+        (["Alice", "Bob"], None, 10.0),
+        (None, ["Bob"], 2.0),
+        (["Alice"], ["Bob"], 2.0),
+        ([" alice "], None, 7.0),
+        (["Ali"], None, 1.0),
+        (["Nobody"], None, 1.0),
+        (["Nobody"], ["Alice", "Bob"], 1.0),
+    ])
+    @pytest.mark.parametrize("unowned", ["", " ", ","])
+    def test_owner_filters(self, tmp_path, owners, xowners, expected, unowned):
+        path = tmp_path / "owners.csv"
+        with path.open("w", newline="", encoding="utf-8") as source:
+            writer = csvmod.writer(source)
+            writer.writerow(["Done At", "CF Size", "Members"])
+            for members, size in [
+                ("Alice", "Small"), ("Bob", "Medium"),
+                ("Alice, Bob", "Large"), (unowned, "Small"),
+            ]:
+                writer.writerow(["2026-03-16", size, members])
+        weekly = load_throughput_auto(
+            str(path), window_weeks=None, owner_filter=OwnerFilter(owners, xowners),
+        )
+        assert weekly == ({} if expected is None else {date(2026, 3, 16): expected})
+
+    @pytest.mark.parametrize("column", ["Owner", "Owners", "Members"])
+    def test_owner_column_names(self, tmp_path, column):
+        path = tmp_path / "owners.csv"
+        path.write_text(f"Done At,CF Size,{column}\n2026-03-16,Small,Alice\n", encoding="utf-8")
+        assert load_throughput_auto(str(path), None, owner_filter=OwnerFilter(["Alice"])) == {date(2026, 3, 16): 1.0}
+
+    def test_owner_filter_requires_ownership_column(self, kanban_csv):
+        path = kanban_csv([("2026-03-16", "Small")])
+        with pytest.raises(ValueError, match="CSV column"):
+            load_throughput_auto(path, None, owner_filter=OwnerFilter(xowners=["Alice"]))
+
+    def test_owner_filter_rejects_txt_totals(self, tmp_path):
+        path = tmp_path / "throughput.txt"
+        path.write_text("1,2,3", encoding="utf-8")
+        with pytest.raises(ValueError, match="not TXT totals"):
+            load_throughput_auto(str(path), None, owner_filter=OwnerFilter(["Alice"]))
+
     def test_match_requires_header_columns(self, tmp_path):
         loader = KanbanZoneCSVLoader()
         good = tmp_path / "good.csv"
@@ -368,3 +456,49 @@ class TestLoaderRegistry:
         assert get_loader(str(path)) is None  # confirms normal detection fails
         weekly = load_throughput_auto(str(path), window_weeks=None, uniform_size=1.0)
         assert weekly == {date(2026, 3, 16): 1.0}
+
+
+class TestOwnerFilter:
+    @pytest.mark.parametrize("term,label,expected", [
+        ("Alice Smith", "alice smith", True),
+        ("Sébastien Verreault", "sebastien.verreault.1@ulaval.ca", True),
+        ("verreault", "sebastien.verreault.1@ulaval.ca", True),
+        ("sebastien.verreault", "sebastien.verreault.1@ulaval.ca", True),
+        ("SEBASTIEN.VERREAULT.1@ULAVAL.CA", "sebastien.verreault.1@ulaval.ca", True),
+        ("Verreault", "Sébastien Verreault", True),
+        ("Ali", "Alice Smith", False),
+        ("Alice Jones", "Alice Smith", False),
+        ("alice@other.org", "Alice Smith", False),
+        ("alice@other.org", "alice@example.com", False),
+    ])
+    def test_term_matching(self, term, label, expected):
+        assert OwnerFilter([term]).keeps([label]) is expected
+
+    def test_unowned_cards_are_always_kept(self):
+        assert OwnerFilter(["Alice"], ["Bob"]).keeps([])
+
+    def test_exclusion_wins(self):
+        assert not OwnerFilter(["Alice"], ["Bob"]).keeps(["Alice", "Bob"])
+
+    def test_reports_unmatched_terms_and_seen_owners(self):
+        owner_filter = OwnerFilter(["Alice", "Nobody"], ["Ghost"])
+        owner_filter.keeps(["alice@example.com"])
+        owner_filter.keeps(["Bob"])
+        assert owner_filter.unmatched() == [("--owners", "Nobody"), ("--xowners", "Ghost")]
+        assert sorted(owner_filter.seen.values()) == ["Bob", "alice@example.com"]
+
+    def test_empty_filter_is_falsy(self):
+        assert not OwnerFilter()
+        assert OwnerFilter(xowners=["Bob"])
+
+
+class TestOwnerLabels:
+    @pytest.mark.parametrize("value,expected", [
+        (None, []), ("", []), ([], []), ({}, []), (False, []),
+        ("Alice, Bob", ["Alice", "Bob"]),
+        (12345, ["12345"]),
+        ([101, {"name": "Bob"}], ["101", "Bob"]),
+        ({"firstName": "Ann", "lastName": "Lee"}, ["Ann Lee"]),
+    ])
+    def test_shapes(self, value, expected):
+        assert owner_labels(value) == expected

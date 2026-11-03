@@ -1,8 +1,12 @@
+from datetime import date
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 
-from montecarlo.charts import make_charts
+from montecarlo.charts import _draw_sensitivity_chart, make_charts, owner_filter_label
+from montecarlo.loaders import OwnerFilter
+from montecarlo.simulation import weekly_samples
 from montecarlo.strings import CHART_STRINGS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -28,6 +32,117 @@ class TestChartStrings:
         for lang, table in CHART_STRINGS.items():
             for key in ("size_tiny", "size_small", "size_medium", "size_large", "size_xlarge"):
                 assert key in table, f"{lang} table is missing '{key}'"
+
+
+class TestOwnerFilterLabel:
+    FR = CHART_STRINGS["fr"]
+
+    def test_inline_for_the_console(self):
+        assert owner_filter_label(["Alice", "Bob"], ["Carl"], self.FR) == "Alice, Bob sauf Carl"
+
+    def test_one_owner_per_line_for_the_chart_panel(self):
+        assert owner_filter_label(["Alice", "Bob"], ["Carl", "Dana"], self.FR,
+                                  one_per_line=True) == "Alice\nBob\nsauf Carl\nsauf Dana"
+
+    def test_exclusions_only(self):
+        assert owner_filter_label(None, ["Carl"], self.FR, one_per_line=True) == "tous\nsauf Carl"
+
+    def test_no_filter(self):
+        assert owner_filter_label(None, None, self.FR, one_per_line=True) is None
+
+
+class TestSensitivityExclusions:
+    def test_exclusions_preserve_calendar_anchor(self, kanban_csv, monkeypatch):
+        from montecarlo.loaders import load_throughput_auto
+
+        path = kanban_csv([
+            ("2026-01-05", "Small"), ("2026-01-12", "Medium"), ("2026-01-19", "Large"),
+        ])
+        periods = [(date(2026, 1, 19), date(2026, 1, 19))]
+        loads, histories = [], []
+
+        def capture_load(filepath, window_weeks, **kwargs):
+            loads.append(window_weeks)
+            return load_throughput_auto(filepath, window_weeks, **kwargs)
+
+        def capture_samples(weekly):
+            histories.append(weekly)
+            return weekly_samples(weekly)
+
+        monkeypatch.setattr("montecarlo.charts.load_throughput_auto", capture_load)
+        monkeypatch.setattr("montecarlo.charts.weekly_samples", capture_samples)
+        figure, axis = plt.subplots()
+        try:
+            _draw_sensitivity_chart(
+                axis, CHART_STRINGS["en"], filepath=path,
+                window_weeks=2, window_start=None, window_end=None,
+                target_score=1, n_workdays=5, n_weeks=1,
+                display_window=None, certainties=[80], annotations={},
+                exclude_periods=periods,
+            )
+            # The file is read once; windows (All, 3, 2, 1 weeks) are cut in
+            # memory. The 1-week window is fully excluded, so it isn't simulated.
+            assert loads == [None]
+            assert histories == [
+                {date(2026, 1, 5): 1.0, date(2026, 1, 12): 3.0},
+                {date(2026, 1, 5): 1.0, date(2026, 1, 12): 3.0},
+                {date(2026, 1, 12): 3.0},
+            ]
+            assert axis.get_xticklabels()[-1].get_text() == "2026-01-19"
+            assert len(figure.axes[1].patches) == 2
+        finally:
+            plt.close(figure)
+
+    def test_owner_filter_applies_to_sensitivity_history(self, tmp_path, monkeypatch):
+        path = tmp_path / "owners.csv"
+        path.write_text(
+            "Done At,CF Size,Members\n"
+            "2026-01-05,Small,Alice\n2026-01-05,Large,Bob\n2026-01-12,Medium,Alice\n",
+            encoding="utf-8",
+        )
+        histories = []
+
+        def capture_samples(weekly):
+            histories.append(weekly)
+            return weekly_samples(weekly)
+
+        monkeypatch.setattr("montecarlo.charts.weekly_samples", capture_samples)
+        figure, axis = plt.subplots()
+        try:
+            _draw_sensitivity_chart(
+                axis, CHART_STRINGS["en"], filepath=str(path),
+                window_weeks=None, window_start=None, window_end=None,
+                target_score=1, n_workdays=5, n_weeks=1,
+                display_window=None, certainties=[80], annotations={},
+                owner_filter=OwnerFilter(["alice"]),
+            )
+            assert histories[0] == {date(2026, 1, 5): 1.0, date(2026, 1, 12): 3.0}
+        finally:
+            plt.close(figure)
+
+    def test_annotations_stay_anchored_when_the_last_week_is_excluded(self, kanban_csv):
+        path = kanban_csv([
+            ("2026-01-05", "Small"), ("2026-01-12", "Medium"), ("2026-01-19", "Large"),
+        ])
+        figure, axis = plt.subplots()
+        try:
+            _draw_sensitivity_chart(
+                axis, CHART_STRINGS["en"], filepath=path,
+                window_weeks=None, window_start=None, window_end=None,
+                target_score=1, n_workdays=5, n_weeks=1,
+                display_window=None, certainties=[80],
+                annotations={date(2026, 1, 7): ["Kickoff"]},
+                exclude_periods=[(date(2026, 1, 19), date(2026, 1, 19))],
+            )
+            # Windows are [All, 3, 2, 1] weeks ending on 2026-01-19, the last
+            # week of the full history even though it's excluded. Jan 7 is
+            # ~2.3 weeks before that week's Friday, so it's drawn at the
+            # 2-week window (index 2); anchoring on the last remaining week
+            # (2026-01-12) would put it ~1.3 weeks back, at index 3.
+            note = next(text for text in axis.texts if text.get_text() == "Kickoff")
+            assert note.get_position()[0] == 2 + 0.15
+        finally:
+            plt.close(figure)
 
 
 class TestMakeCharts:

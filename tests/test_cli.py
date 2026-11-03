@@ -1,6 +1,6 @@
 import io
 import re
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -16,6 +16,7 @@ from montecarlo.cli import (
     resolve_weeks,
     resolve_window,
 )
+from montecarlo.constants import SCORES
 from montecarlo.strings import CHART_STRINGS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -57,6 +58,35 @@ class TestEnsureUtf8Streams:
 
 
 class TestBuildParser:
+    def test_exclude_periods_defaults_to_none(self):
+        assert build_parser().parse_args([]).exclude_periods is None
+
+    def test_exclude_periods_accepts_multiple_ranges(self):
+        args = build_parser().parse_args([
+            "--exclude-periods", "2026-07-20:2026-08-02", "2026-09-07:2026-09-13",
+        ])
+        assert args.exclude_periods == [
+            (date(2026, 7, 20), date(2026, 8, 2)),
+            (date(2026, 9, 7), date(2026, 9, 13)),
+        ]
+
+    @pytest.mark.parametrize("period", [
+        "2026-01-05", "bad:dates", "2026-02-30:2026-03-01",
+        "2026-02-01:2026-01-01", "20260101:20260102",
+        "2026-01-01:2026-01-02:2026-01-03",
+    ])
+    def test_exclude_periods_rejects_invalid_ranges(self, period, capsys):
+        with pytest.raises(SystemExit) as error:
+            build_parser().parse_args(["--exclude-periods", period])
+        assert error.value.code == 2
+        assert "--exclude-periods" in capsys.readouterr().err
+
+    def test_exclude_periods_from_config(self, tmp_path):
+        config = tmp_path / "periods.conf"
+        config.write_text("--exclude-periods 2026-01-05:2026-01-05\n", encoding="utf-8")
+        args = build_parser().parse_args([f"@{config}"])
+        assert args.exclude_periods == [(date(2026, 1, 5), date(2026, 1, 5))]
+
     def test_weeks_defaults_to_none(self):
         args = build_parser().parse_args([])
         assert args.weeks is None
@@ -96,10 +126,87 @@ class TestBuildParser:
         assert args.uniform_size == 1.0
 
 
+class TestForecastExcludePeriods:
+    @pytest.mark.parametrize("source", ["csv", "api", "txt"])
+    def test_forecast_filters_history_and_forwards_periods(self, source, tmp_path, kanban_csv, monkeypatch):
+        from montecarlo.simulation import weekly_samples
+
+        latest = date(2026, 1, 19)
+        expected_target = 1.0
+        if source == "api":
+            cards = [
+                {"doneAt": f"2026-01-{day:02d}", "columnState": "Done",
+                 "customFields": [{"label": "Size", "value": size}]}
+                for day, size in [(5, "Small"), (12, "Medium"), (19, "Large")]
+            ]
+            cards.append({"columnState": "Start", "customFields": [{"label": "Size", "value": "Large"}]})
+            monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *args, **kwargs: cards)
+            source_flags = ["--board", "test-board", "--api-key", "test-key", "--include-todo"]
+            expected_target = 6.0
+        elif source == "txt":
+            path = tmp_path / "throughput.txt"
+            path.write_text("1,3,5", encoding="utf-8")
+            latest = date.today() - timedelta(days=date.today().weekday(), weeks=1)
+            source_flags = ["-f", str(path)]
+        else:
+            path = kanban_csv([("2026-01-05", "Small"), ("2026-01-12", "Medium"), ("2026-01-19", "Large")])
+            source_flags = ["-f", path]
+
+        captured = {}
+
+        def capture_samples(weekly):
+            captured["history"] = weekly
+            return weekly_samples(weekly)
+
+        def capture_chart(*args, **kwargs):
+            captured["target"] = args[2]
+            captured["periods"] = kwargs["exclude_periods"]
+
+        monkeypatch.setattr("montecarlo.cli.weekly_samples", capture_samples)
+        monkeypatch.setattr("montecarlo.cli.make_charts", capture_chart)
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", *source_flags, "-p", "1", "-w", "2", "-W", "2", "-n", "100",
+            "--exclude-periods", f"{latest}:{latest}",
+        ])
+        main()
+        assert captured["history"] == {latest - timedelta(weeks=1): 3.0}
+        assert captured["periods"] == [(latest, latest)]
+        assert captured["target"] == expected_target
+
+    def test_excluding_all_history_exits_cleanly(self, kanban_csv, monkeypatch, capsys):
+        path = kanban_csv([("2026-01-05", "Small")])
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "-f", path, "-p", "1", "-w", "1",
+            "--exclude-periods", "2026-01-05:2026-01-05",
+        ])
+        with pytest.raises(SystemExit) as error:
+            main()
+        assert error.value.code == 1
+        assert EN["console_could_not_load"] in capsys.readouterr().err
+
+
 class TestConfigArgumentParser:
     def setup_method(self):
         self.parser = build_parser()
         assert isinstance(self.parser, _ConfigArgumentParser)
+
+    def test_shared_template_parses_and_documents_every_option(self):
+        template = REPO_ROOT / "exemples" / "run.conf"
+        args = self.parser.parse_args([f"@{template}"])
+        assert args.file == "exemples/kanban_zone.csv"
+        assert args.weeks == 10
+        assert args.target_date is None
+        assert compute_target_score(args) > 0
+        documented = {
+            line.lstrip("# ").split()[0]
+            for line in template.read_text(encoding="utf-8").splitlines()
+            if line.lstrip("# ").startswith("--")
+        }
+        options = {
+            option for action in self.parser._actions
+            for option in action.option_strings if option.startswith("--")
+        }
+        assert options <= documented
 
     def test_blank_and_comment_lines_are_ignored(self):
         assert self.parser.convert_arg_line_to_args("") == []
@@ -337,6 +444,47 @@ class TestResolveDataFile:
             resolve_data_file(args, EN)
 
 
+    @pytest.mark.parametrize("flags,expected_count", [
+        (["--owners", "ALICE"], 3),
+        (["--xowners", "Bob"], 2),
+        (["--owners", "Alice", "Bob", "--xowners", "Bob"], 2),
+        (["--owners", "Nobody", "--xowners", "Alice", "Bob"], 1),
+    ])
+    @pytest.mark.parametrize("unowned", [
+        {}, {"owners": None}, {"owners": []}, {"owners": {}},
+        {"owner": ""}, {"members": " "},
+    ])
+    def test_owner_filters_apply_to_api_history_and_targets(self, monkeypatch, flags, expected_count, unowned):
+        from montecarlo.kanbanzone_api import compute_board_target
+        from montecarlo.loaders import load_throughput_auto
+
+        cards = [
+            {
+                "owners": owners,
+                "doneAt": "2026-03-16T10:00:00Z",
+                "columnState": "Start",
+                "customFields": [{"label": "Size", "value": "Small"}],
+            }
+            for owners in [[{"name": "Alice"}], ["Alice", "Bob"], ["Bob"]]
+        ]
+        cards.append({
+            "doneAt": "2026-03-16T10:00:00Z",
+            "columnState": "Start",
+            "customFields": [{"label": "Size", "value": "Small"}],
+            **unowned,
+        })
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *args, **kwargs: cards)
+        args = build_parser().parse_args(["--board", "abc123", "--api-key", "test-key", *flags])
+        path, filtered = resolve_data_file(args, EN)
+        try:
+            assert len(filtered) == expected_count
+            weekly = load_throughput_auto(path, None)
+            assert list(weekly.values()) == [float(expected_count)]
+            assert compute_board_target(filtered, True, False)["todo"] == (float(expected_count), expected_count, 0)
+        finally:
+            Path(path).unlink()
+
+
 class TestResolveStartDate:
     def test_defaults_to_next_monday(self):
         args = build_parser().parse_args(["-w", "1"])
@@ -367,13 +515,19 @@ class TestMainValidation:
         assert exc.value.code == 1
         assert "usage" in capsys.readouterr().out.lower()
 
-    def test_weeks_and_target_date_together_are_rejected(self, monkeypatch):
-        monkeypatch.setattr("sys.argv", [
-            "monte_carlo.py", "-s", "5", "-w", "8", "--target-date", "2026-12-31",
-        ])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 2
+    @pytest.mark.parametrize("argv,weeks,target_date", [
+        (["-w", "8", "--target-date", "2026-12-31"], None, "2026-12-31"),
+        (["--target-date", "2026-12-31", "-w", "8"], 8, None),
+    ])
+    def test_last_of_weeks_and_target_date_wins(self, argv, weeks, target_date):
+        args = build_parser().parse_args(argv)
+        assert (args.weeks, args.target_date) == (weeks, target_date)
+
+    def test_command_line_target_date_overrides_config_weeks(self):
+        args = build_parser().parse_args(
+            [f"@{REPO_ROOT / 'exemples' / 'run.conf'}", "--target-date", "2026-12-31"]
+        )
+        assert (args.weeks, args.target_date) == (None, "2026-12-31")
 
     def test_unplanned_ratio_of_one_is_rejected(self, monkeypatch):
         monkeypatch.setattr("sys.argv", [
@@ -595,7 +749,7 @@ class TestMainEndToEnd:
             path = tmp_path / "board_fetch.csv"
             rows = cards_to_csv_rows(cards)
             with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csvmod.DictWriter(f, fieldnames=["Done At", "CF Envergure"])
+                writer = csvmod.DictWriter(f, fieldnames=["Done At", "Owners", "CF Envergure"])
                 writer.writeheader()
                 writer.writerows(rows)
             written_path["path"] = str(path)
@@ -646,7 +800,7 @@ class TestMainEndToEnd:
             path = tmp_path / "board_fetch.csv"
             rows = cards_to_csv_rows(cards)
             with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csvmod.DictWriter(f, fieldnames=["Done At", "CF Envergure"])
+                writer = csvmod.DictWriter(f, fieldnames=["Done At", "Owners", "CF Envergure"])
                 writer.writeheader()
                 writer.writerows(rows)
             return str(path)
@@ -663,10 +817,40 @@ class TestMainEndToEnd:
         main()
         out = capsys.readouterr().out
         # todo: 5 (Grand, "Start" only — "Backlog" is excluded); wip: 1 + 1 (Petit) = 2 pts; total 7 pts
-        assert "7 pts" in out
-        assert "5 pts To Do (1 cards)" in out
-        assert "2 pts WIP (2 cards)" in out
+        # Board cards are shown once, in the size mix — not repeated as point totals.
+        assert "7 pts  (0×X-Small + 2×Small + 0×Medium + 1×Large + 0×X-Large)\n" in out
+        assert "pts To Do" not in out and "pts WIP" not in out
         assert len(list(tmp_path.glob("*.png"))) == 1
+
+    def test_target_summary_combines_manual_and_board_sizes(self, monkeypatch, capsys):
+        cards = [
+            {"columnState": "Start", "customFields": [{"label": "Size", "value": size}]}
+            for size in ["X-Small", "Small", "Medium", "Large", "X-Large"]
+        ]
+        cards.extend([
+            {"columnState": "Done", "doneAt": "2026-01-05",
+             "customFields": [{"label": "Size", "value": "Small"}]},
+            {"columnState": "In Progress",
+             "customFields": [{"label": "Size", "value": "Medium"}]},
+            {"columnState": "Backlog",
+             "customFields": [{"label": "Size", "value": "Small"}]},
+            {"columnState": "Start", "customFields": []},
+            {"columnState": "Start", "archivedAt": "2026-01-01",
+             "customFields": [{"label": "Size", "value": "Large"}]},
+        ])
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *args, **kwargs: cards)
+        monkeypatch.setattr("montecarlo.cli.make_charts", lambda *args, **kwargs: None)
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "--board", "test-board", "--api-key", "test-key",
+            "--include-todo", "--include-wip", "--include-backlog",
+            "-t", "1", "-s", "2", "-m", "1", "-l", "1", "-x", "1", "-p", "4",
+            "-w", "4", "-n", "100",
+        ])
+        main()
+        out = capsys.readouterr().out
+        assert (
+            "44 pts  (2×X-Small + 4×Small + 3×Medium + 2×Large + 2×X-Large + 4 direct pts)\n"
+        ) in out
 
     def test_runs_from_an_at_config_file(self, tmp_path, monkeypatch, capsys):
         config = tmp_path / "run.conf"
@@ -781,3 +965,121 @@ class TestMainEndToEnd:
         assert "Probabilité de livrer" in out
         assert "2026-01-01 au 2026-03-31" in out
         assert " to " not in out
+
+
+class TestOwnerFilterReporting:
+    def _board(self, monkeypatch, cards, *flags):
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *args, **kwargs: cards)
+        monkeypatch.setattr("montecarlo.cli.make_charts", lambda *args, **kwargs: None)
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "--board", "b", "--api-key", "k", "-p", "1", "-w", "2",
+            "-n", "50", *flags,
+        ])
+        main()
+
+    CARDS = [
+        {"owner": "sebastien.verreault.1@ulaval.ca", "doneAt": "2026-03-16T10:00:00Z",
+         "customFields": [{"label": "Size", "value": "Small"}]},
+        {"owner": "laurie.harvey@fsaa.ulaval.ca", "doneAt": "2026-03-16T10:00:00Z",
+         "customFields": [{"label": "Size", "value": "Medium"}]},
+    ]
+
+    def test_full_name_matches_an_api_email(self, monkeypatch, capsys):
+        self._board(monkeypatch, self.CARDS, "--owners", "Sébastien Verreault")
+        captured = capsys.readouterr()
+        assert "1.0 pts/wk." in captured.out
+        assert "matches no card owner" not in captured.err
+
+    def test_unmatched_term_warns_with_the_owners_found(self, monkeypatch, capsys):
+        self._board(monkeypatch, self.CARDS, "--owners", "verreault", "--xowners", "Nobody")
+        err = capsys.readouterr().err
+        assert "--xowners 'Nobody' matches no card owner" in err
+        assert "--owners 'verreault'" not in err
+        assert "laurie.harvey@fsaa.ulaval.ca, sebastien.verreault.1@ulaval.ca" in err
+
+    def test_active_filters_are_shown_in_the_summary(self, monkeypatch, capsys):
+        self._board(monkeypatch, self.CARDS, "--owners", "verreault", "--xowners", "harvey",
+                    "--exclude-periods", "2026-01-05:2026-01-11")
+        out = capsys.readouterr().out
+        assert "verreault except harvey" in out
+        assert "2026-01-05 → 2026-01-11" in out
+
+    def test_malformed_txt_is_a_data_error_not_a_usage_error(self, tmp_path, monkeypatch, capsys):
+        path = tmp_path / "throughput.txt"
+        path.write_text("3,4,x,5", encoding="utf-8")
+        monkeypatch.setattr("sys.argv", ["monte_carlo.py", "-f", str(path), "-p", "1", "-w", "2"])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "Could not read" in err and "usage:" not in err
+
+
+class TestUnownedBoardTarget:
+    CARDS = [
+        {"owner": owner, "columnState": "Start",
+         "customFields": [{"label": "Size", "value": size}]}
+        for owner, size in [("alice@example.com", "Small"), ("bob@example.com", "Medium"),
+                            (None, "Large")]
+    ] + [{"owner": "alice@example.com", "doneAt": "2026-03-16T10:00:00Z",
+          "customFields": [{"label": "Size", "value": "Small"}]}]
+
+    def _target(self, monkeypatch, *flags):
+        captured = {}
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *args, **kwargs: self.CARDS)
+        monkeypatch.setattr("montecarlo.cli.make_charts",
+                            lambda *args, **kwargs: captured.setdefault("target", args[2]))
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "--board", "b", "--api-key", "k", "--include-todo",
+            "-w", "2", "-n", "50", *flags,
+        ])
+        main()
+        return captured["target"]
+
+    def test_unowned_cards_are_left_out_of_a_filtered_target(self, monkeypatch, capsys):
+        assert self._target(monkeypatch, "--owners", "alice") == SCORES["Small"]
+        assert "1 unowned board card(s) left out of the target" in capsys.readouterr().out
+
+    def test_include_unowned_counts_them(self, monkeypatch, capsys):
+        target = self._target(monkeypatch, "--owners", "alice", "--include-unowned")
+        assert target == SCORES["Small"] + SCORES["Large"]
+        assert "left out of the target" not in capsys.readouterr().out
+
+    def test_without_an_owner_filter_every_card_counts(self, monkeypatch, capsys):
+        assert self._target(monkeypatch) == SCORES["Small"] + SCORES["Medium"] + SCORES["Large"]
+        assert "left out of the target" not in capsys.readouterr().out
+
+    def test_xowners_also_leaves_unowned_cards_out(self, monkeypatch):
+        assert self._target(monkeypatch, "--xowners", "bob") == SCORES["Small"]
+
+
+class TestRemainingCliPaths:
+    def test_owner_filter_on_txt_totals_is_a_usage_error(self, tmp_path, monkeypatch, capsys):
+        path = tmp_path / "throughput.txt"
+        path.write_text("3,4,5", encoding="utf-8")
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "-f", str(path), "-p", "1", "-w", "2", "--owners", "Alice",
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "usage:" in err and "not TXT totals" in err
+
+    def test_board_totals_are_shown_when_cards_have_no_size(self, monkeypatch, capsys):
+        cards = [
+            {"columnState": "Start", "customFields": []},
+            {"columnState": "Start", "customFields": []},
+            {"doneAt": "2026-03-16T10:00:00Z", "customFields": []},
+        ]
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *args, **kwargs: cards)
+        monkeypatch.setattr("montecarlo.cli.make_charts", lambda *args, **kwargs: None)
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "--board", "b", "--api-key", "k", "--include-todo",
+            "--uniform-size", "2", "-w", "2", "-n", "50",
+        ])
+        main()
+        # With --uniform-size there's no size mix to merge the cards into,
+        # so their point total is the only place they show up.
+        assert "4 pts  (0×X-Small + 0×Small + 0×Medium + 0×Large + 0×X-Large)  " \
+               "(4 pts To Do (2 cards))" in capsys.readouterr().out

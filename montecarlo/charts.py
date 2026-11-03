@@ -11,7 +11,13 @@ import numpy as np
 matplotlib.use("Agg")
 
 from .constants import DEFAULT_OUTPUT_DIR
-from .loaders import get_loader, load_throughput_auto
+from .loaders import (
+    OwnerFilter,
+    apply_window_weeks,
+    drop_excluded_weeks,
+    get_loader,
+    load_throughput_auto,
+)
 from .naming import DEFAULT_FILENAME_FORMAT, render_filename
 from .simulation import simulate, weekly_samples
 from .strings import CHART_STRINGS
@@ -19,6 +25,33 @@ from .theme import (
     BG, BG_AX, C_ANNOT, C_CURVE, C_FILL, C_GRID, C_PERCENTILE,
     C_SUBTEXT, C_TARGET, C_TEXT, CERT_COLORS,
 )
+
+
+def owner_filter_label(owners: list[str] | None, xowners: list[str] | None,
+                       s: dict[str, str], one_per_line: bool = False) -> str | None:
+    """
+    'Alice, Bob except Bob' / 'all except Bob', or None when no filter is
+    set. one_per_line puts each owner on its own line ('except Bob' for
+    exclusions), for the narrow chart panel.
+    """
+    if not owners and not xowners:
+        return None
+    if one_per_line:
+        lines = list(owners or []) or [s["owners_all"]]
+        lines += [f"{s['owners_except']} {name}" for name in xowners or []]
+        return "\n".join(lines)
+    label = ", ".join(owners) if owners else s["owners_all"]
+    if xowners:
+        label += f" {s['owners_except']} " + ", ".join(xowners)
+    return label
+
+
+def excluded_periods_label(periods: list[tuple[date, date]] | None,
+                           separator: str = ", ") -> str | None:
+    """'2026-07-20 → 2026-08-02, …', or None when no period is excluded."""
+    if not periods:
+        return None
+    return separator.join(f"{start} → {end}" for start, end in periods)
 
 
 def _style_axis(ax) -> None:
@@ -49,6 +82,8 @@ def _draw_params_panel(
     certainties_str: str,
     n_simulations: int,
     annot_str: str,
+    excluded_str: str | None = None,
+    owners_str: str | None = None,
 ) -> None:
     ax_params.set_facecolor("#1E2336")
     ax_params.set_xticks([])
@@ -67,6 +102,8 @@ def _draw_params_panel(
         (s["param_holidays"],    days_off_str),
         (s["param_unplanned"],   unplanned_str),
         (s["param_window"],      fenetre_str),
+        *([(s["param_excluded"], excluded_str)] if excluded_str is not None else []),
+        *([(s["param_owners"],   owners_str)] if owners_str is not None else []),
         (s["param_chart"],       display_str),
         (s["param_certainties"], certainties_str),
         (s["param_simulations"], f"{n_simulations:,}"),
@@ -74,17 +111,16 @@ def _draw_params_panel(
     ]
 
     n_params  = len(params)
-    mix_lines = mix_str.count("\n") + 1
     # Height of one 8.5pt text line in row units (a row is ~86 px on the
-    # 1920x1080 figure, a text line ~21 px); extra Mix lines each cost one
-    # such line, not a full row's worth of padding.
+    # 1920x1080 figure, a text line ~21 px); extra lines of a multi-line
+    # value (Mix, excluded periods) each cost one such line, not a full
+    # row's worth of padding.
     line_unit = 0.25
-    extra     = (mix_lines - 1) * line_unit
-    n_slots   = n_params + extra  # multi-line Mix consumes extra vertical space
+    row_spans = [1 + value.count("\n") * line_unit for _label, value in params]
+    n_slots   = sum(row_spans)
 
     slot = 0.0
-    for i, (label, value) in enumerate(params):
-        row_span = 1 + extra if label == s["param_mix"] else 1
+    for i, ((label, value), row_span) in enumerate(zip(params, row_spans)):
         y = 1.0 - (slot + 0.35) / n_slots
         ax_params.text(0.08, y, label,
                        transform=ax_params.transAxes,
@@ -215,21 +251,26 @@ def _draw_sensitivity_chart(
     annotations: dict[date, list[str]],
     unplanned_ratio: float = 0.0,
     uniform_size: float | None = None,
+    exclude_periods: list[tuple[date, date]] | None = None,
+    owner_filter: OwnerFilter | None = None,
 ) -> None:
     """Chart 3: probability of delivering vs. history window used."""
     _style_axis(ax3)
 
-    all_daily = load_throughput_auto(
+    # Loaded once; each window below is cut from it in memory, the same
+    # way the loader would (window on the full history, then exclusions).
+    full_daily = load_throughput_auto(
         filepath, window_weeks=None, window_start=window_start, window_end=window_end,
-        uniform_size=uniform_size,
+        uniform_size=uniform_size, owner_filter=owner_filter,
     )
+    all_daily = drop_excluded_weeks(full_daily, exclude_periods)
     if not all_daily:
         ax3.text(0.5, 0.5, s["no_data"], ha="center", va="center",
                  transform=ax3.transAxes, color=C_SUBTEXT)
         return
 
     max_possible_weeks = int(
-        (max(all_daily.keys()) - min(all_daily.keys())).days / 7
+        (max(full_daily.keys()) - min(full_daily.keys())).days / 7
     ) + 1
     display_weeks = (
         min(max_possible_weeks, display_window)
@@ -242,10 +283,7 @@ def _draw_sensitivity_chart(
     probs = []
     rng_chart = np.random.default_rng(42)
     for w in window_range:
-        d = load_throughput_auto(
-            filepath, window_weeks=w, window_start=window_start, window_end=window_end,
-            uniform_size=uniform_size,
-        )
+        d = drop_excluded_weeks(apply_window_weeks(full_daily, w), exclude_periods)
         if not d:
             probs.append(0.0)
             continue
@@ -258,7 +296,7 @@ def _draw_sensitivity_chart(
     # Each window size w means "use the last w weeks of history ending on
     # max_date", so its corresponding x-axis label is the Monday that
     # window starts on — more informative than a bare week count.
-    max_date = max(all_daily.keys())
+    max_date = max(full_daily.keys())
     x_labels = [
         s["all_label"] if w is None else str(max_date - timedelta(weeks=w - 1))
         for w in window_range
@@ -321,7 +359,7 @@ def _draw_sensitivity_chart(
 
     # Annotations: vertical lines at the corresponding week positions
     if annotations:
-        last_monday     = max(all_daily.keys())
+        last_monday     = max_date
         ref_date        = last_monday + timedelta(days=4)  # Friday of the last week
         numeric_windows = [w for w in window_range if w is not None]
         max_window      = max(numeric_windows) if numeric_windows else 0
@@ -380,6 +418,8 @@ def make_charts(
     filename_format: str | None = None,
     title: str | None = None,
     description: str | None = None,
+    exclude_periods: list[tuple[date, date]] | None = None,
+    owner_filter: OwnerFilter | None = None,
 ) -> None:
     if certainties is None:
         certainties = [80]
@@ -486,6 +526,11 @@ def make_charts(
         days_off_str=days_off_str, unplanned_str=unplanned_str,
         fenetre_str=fenetre_str, display_str=display_str,
         certainties_str=certainties_str, n_simulations=n_simulations, annot_str=annot_str,
+        excluded_str=excluded_periods_label(exclude_periods, separator="\n"),
+        owners_str=owner_filter_label(
+            owner_filter.owners if owner_filter else None,
+            owner_filter.xowners if owner_filter else None, s, one_per_line=True,
+        ),
     )
 
     _draw_weeks_histogram(
@@ -507,6 +552,7 @@ def make_charts(
         target_score=target_score, n_workdays=n_workdays, n_weeks=n_weeks,
         display_window=display_window, certainties=certainties, annotations=annotations,
         unplanned_ratio=unplanned_ratio, uniform_size=uniform_size,
+        exclude_periods=exclude_periods, owner_filter=owner_filter,
     )
 
     target_calendar_date = target_date if target_date is not None else sim_start + timedelta(weeks=n_weeks)
