@@ -16,6 +16,7 @@ from montecarlo.cli import (
     resolve_weeks,
     resolve_window,
 )
+from montecarlo.constants import SCORES
 from montecarlo.strings import CHART_STRINGS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -1012,3 +1013,41 @@ class TestOwnerFilterReporting:
         assert exc.value.code == 1
         err = capsys.readouterr().err
         assert "Could not read" in err and "usage:" not in err
+
+
+class TestUnownedBoardTarget:
+    CARDS = [
+        {"owner": owner, "columnState": "Start",
+         "customFields": [{"label": "Size", "value": size}]}
+        for owner, size in [("alice@example.com", "Small"), ("bob@example.com", "Medium"),
+                            (None, "Large")]
+    ] + [{"owner": "alice@example.com", "doneAt": "2026-03-16T10:00:00Z",
+          "customFields": [{"label": "Size", "value": "Small"}]}]
+
+    def _target(self, monkeypatch, *flags):
+        captured = {}
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *args, **kwargs: self.CARDS)
+        monkeypatch.setattr("montecarlo.cli.make_charts",
+                            lambda *args, **kwargs: captured.setdefault("target", args[2]))
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "--board", "b", "--api-key", "k", "--include-todo",
+            "-w", "2", "-n", "50", *flags,
+        ])
+        main()
+        return captured["target"]
+
+    def test_unowned_cards_are_left_out_of_a_filtered_target(self, monkeypatch, capsys):
+        assert self._target(monkeypatch, "--owners", "alice") == SCORES["Small"]
+        assert "1 unowned board card(s) left out of the target" in capsys.readouterr().out
+
+    def test_include_unowned_counts_them(self, monkeypatch, capsys):
+        target = self._target(monkeypatch, "--owners", "alice", "--include-unowned")
+        assert target == SCORES["Small"] + SCORES["Large"]
+        assert "left out of the target" not in capsys.readouterr().out
+
+    def test_without_an_owner_filter_every_card_counts(self, monkeypatch, capsys):
+        assert self._target(monkeypatch) == SCORES["Small"] + SCORES["Medium"] + SCORES["Large"]
+        assert "left out of the target" not in capsys.readouterr().out
+
+    def test_xowners_also_leaves_unowned_cards_out(self, monkeypatch):
+        assert self._target(monkeypatch, "--xowners", "bob") == SCORES["Small"]

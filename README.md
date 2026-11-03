@@ -63,6 +63,7 @@ The chart is saved in the `output/` directory as `monte_carlo - livr YYYY-MM-DD 
 |      | `--include-archived` | off        | With `--board`, also fetch archived cards |
 |      | `--owners`        | none          | Keep cards matching any listed owner; accepts multiple space-separated names |
 |      | `--xowners`       | none          | Exclude cards matching any listed owner; overrides `--owners` |
+|      | `--include-unowned` | off         | With an owner filter, also count unowned cards in the board-derived target |
 |      | `--include-todo`  | off           | Add committed, queued-to-start cards (Kanban Zone's `Start` column state — not `Backlog`) to the target, computed from the board itself. Requires `--board` (see below) |
 |      | `--include-backlog` | off         | Also add the uncommitted `Backlog` cards to the target. Requires `--board` (see below) |
 |      | `--include-wip`   | off           | Add in-progress cards (`In Progress`/`Buffer` column states, i.e. WIP) to the target, computed from the board itself. Requires `--board` (see below) |
@@ -130,10 +131,16 @@ the CSV export's `Members` column lists **full names**. The API also gives a sin
 `owner` per card, whereas a CSV card can list several members.
 
 A card with several owners is kept if any owner matches `--owners`, but excluded if
-any owner matches `--xowners`. Cards without an owner are always kept by both
-filters, including when they are combined — on some boards that's a large share of
-the history (about a third on one team board), so check how many cards have no owner
-before relying on a filtered forecast. Both options also work in `@config` files.
+any owner matches `--xowners`. Cards without an owner are always kept in the
+**history** by both filters, including when they are combined — on some boards that's
+a large share of the history (about a third on one team board), so check how many
+cards have no owner before relying on a filtered forecast. Both options also work in
+`@config` files.
+
+In the **target** derived with `--include-todo`, `--include-wip` or `--include-backlog`,
+unowned cards are left out when an owner filter is active: they aren't anyone's work
+yet, and counting them would add the same unassigned cards to every owner's forecast.
+The console says how many were left out; add `--include-unowned` to count them.
 
 When a term matches no owner at all, a warning lists the owners actually found, so a
 typo or a name-vs-email mismatch doesn't silently forecast from the wrong cards. Active

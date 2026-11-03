@@ -297,11 +297,16 @@ def build_parser() -> argparse.ArgumentParser:
                    help="With --board, also fetch archived cards (default: active cards only)")
     p.add_argument("--owners", nargs="+", default=None, metavar="OWNER",
                    help="Keep cards matching any listed owner (case-insensitive). "
-                        "Unowned cards are always kept. Quote names containing spaces. "
+                        "Unowned cards are kept in the history, but left out of a board-derived "
+                        "target (see --include-unowned). Quote names containing spaces. "
                         "Applies to CSV and --board.")
     p.add_argument("--xowners", nargs="+", default=None, metavar="OWNER",
                    help="Exclude cards matching any listed owner (case-insensitive). "
-                        "Takes precedence over --owners. Unowned cards are always kept.")
+                        "Takes precedence over --owners. Unowned cards are treated as with --owners.")
+    p.add_argument("--include-unowned", action="store_true",
+                   help="With --owners/--xowners, also count unowned cards in the target from "
+                        "--include-todo/--include-wip/--include-backlog (default: left out, so "
+                        "unassigned work isn't added to every owner's forecast).")
     p.add_argument("--cache-ttl", type=float, default=DEFAULT_CACHE_TTL_MINUTES,
                    metavar="MINUTES",
                    help="With --board, reuse cards fetched within the last MINUTES minutes "
@@ -455,15 +460,29 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
         s["console_board_source"].format(board=args.board) if args.board is not None else fpath
     )
 
+    unowned_left_out = 0
     if include_board:
+        target_cards = board_cards
+        if owner_filter and not args.include_unowned:
+            # Unowned cards stay in the history (the team delivered them),
+            # but aren't anyone's upcoming work: counting them would add the
+            # same unassigned cards to every owner's target.
+            target_cards = [c for c in board_cards if card_owner_labels(c, OWNER_KEYS)]
+            unowned = [c for c in board_cards if not card_owner_labels(c, OWNER_KEYS)]
+            unowned_left_out = sum(
+                matched + skipped for _pts, matched, skipped in compute_board_target(
+                    unowned, args.include_todo, args.include_wip, args.uniform_size,
+                    include_backlog=args.include_backlog,
+                ).values()
+            )
         board_breakdown = compute_board_target(
-            board_cards, args.include_todo, args.include_wip, args.uniform_size,
+            target_cards, args.include_todo, args.include_wip, args.uniform_size,
             include_backlog=args.include_backlog,
         )
         target_score += sum(pts for pts, _matched, _skipped in board_breakdown.values())
         if args.uniform_size is None:
             board_sizes = count_board_sizes(
-                board_cards, args.include_todo, args.include_wip, args.include_backlog
+                target_cards, args.include_todo, args.include_wip, args.include_backlog
             )
         if target_score == 0:
             parser.print_help()
@@ -577,6 +596,8 @@ def run_forecast(args: argparse.Namespace, parser: argparse.ArgumentParser) -> N
                 board_sources.append(s[pts_key].format(n=f"{pts:g}", count=matched))
             if skipped:
                 skip_warnings.append(s[skip_key].format(n=skipped))
+        if unowned_left_out:
+            skip_warnings.append(s["console_board_unowned_skipped"].format(n=unowned_left_out))
         sources = f"  ({' + '.join(board_sources)})" if board_sources else ""
         print(f"   {s['param_target']:<{label_width}}: {target_score:g} pts  ({mix}){sources}")
         for warning in skip_warnings:
