@@ -103,6 +103,30 @@ class TestSensitivityExclusions:
         finally:
             plt.close(figure)
 
+    def test_annotations_stay_anchored_when_the_last_week_is_excluded(self, kanban_csv):
+        path = kanban_csv([
+            ("2026-01-05", "Small"), ("2026-01-12", "Medium"), ("2026-01-19", "Large"),
+        ])
+        figure, axis = plt.subplots()
+        try:
+            _draw_sensitivity_chart(
+                axis, CHART_STRINGS["en"], filepath=path,
+                window_weeks=None, window_start=None, window_end=None,
+                target_score=1, n_workdays=5, n_weeks=1,
+                display_window=None, certainties=[80],
+                annotations={date(2026, 1, 7): ["Kickoff"]},
+                exclude_periods=[(date(2026, 1, 19), date(2026, 1, 19))],
+            )
+            # Windows are [All, 3, 2, 1] weeks ending on 2026-01-19, the last
+            # week of the full history even though it's excluded. Jan 7 is
+            # ~2.3 weeks before that week's Friday, so it's drawn at the
+            # 2-week window (index 2); anchoring on the last remaining week
+            # (2026-01-12) would put it ~1.3 weeks back, at index 3.
+            note = next(text for text in axis.texts if text.get_text() == "Kickoff")
+            assert note.get_position()[0] == 2 + 0.15
+        finally:
+            plt.close(figure)
+
 
 class TestMakeCharts:
     def _run(self, tmp_path, weeks_arr, items_arr, **overrides):

@@ -1051,3 +1051,35 @@ class TestUnownedBoardTarget:
 
     def test_xowners_also_leaves_unowned_cards_out(self, monkeypatch):
         assert self._target(monkeypatch, "--xowners", "bob") == SCORES["Small"]
+
+
+class TestRemainingCliPaths:
+    def test_owner_filter_on_txt_totals_is_a_usage_error(self, tmp_path, monkeypatch, capsys):
+        path = tmp_path / "throughput.txt"
+        path.write_text("3,4,5", encoding="utf-8")
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "-f", str(path), "-p", "1", "-w", "2", "--owners", "Alice",
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "usage:" in err and "not TXT totals" in err
+
+    def test_board_totals_are_shown_when_cards_have_no_size(self, monkeypatch, capsys):
+        cards = [
+            {"columnState": "Start", "customFields": []},
+            {"columnState": "Start", "customFields": []},
+            {"doneAt": "2026-03-16T10:00:00Z", "customFields": []},
+        ]
+        monkeypatch.setattr("montecarlo.cli.fetch_cards", lambda *args, **kwargs: cards)
+        monkeypatch.setattr("montecarlo.cli.make_charts", lambda *args, **kwargs: None)
+        monkeypatch.setattr("sys.argv", [
+            "monte_carlo.py", "--board", "b", "--api-key", "k", "--include-todo",
+            "--uniform-size", "2", "-w", "2", "-n", "50",
+        ])
+        main()
+        # With --uniform-size there's no size mix to merge the cards into,
+        # so their point total is the only place they show up.
+        assert "4 pts  (0×X-Small + 0×Small + 0×Medium + 0×Large + 0×X-Large)  " \
+               "(4 pts To Do (2 cards))" in capsys.readouterr().out
